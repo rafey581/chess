@@ -1,6 +1,13 @@
-# Snooker Platform — Development Process (Day-by-Day)
+# Chess Platform — Development Process (Day-by-Day)
 
-This file defines **how** we build the Snooker Platform: slowly and steadily,
+> **Game change:** the platform was built and developed as a snooker game through the
+> sessions recorded below (Day 1 – Day 27, U1). The game has since been replaced with
+> chess (session **C1**). The day-by-day records are kept unchanged as the history of
+> what was built and verified at the time; physics, 3D renderer, shot and frame details
+> in them describe the snooker game, which no longer exists in the code. Everything else
+> they describe (wallet, matchmaking, tournaments, admin, ops) is still current.
+
+This file defines **how** we build the Chess Platform: slowly and steadily,
 one well-sized piece per working session ("day"). It is the control document
 for the whole project.
 
@@ -126,15 +133,43 @@ Legend: `DONE` = built and verified · `PART` = works but incomplete · `TODO` =
 | 27 | Day 27 — Production readiness (ops, no real deploy yet) | all | DONE — env templates + fail-fast config, db:deploy/status for migration order, real /api/health + /api/ready probes, structured pino logs + redaction + graceful shutdown, recoverMatchValidity wired, SQLite->Postgres pg_dump backup/restore scripts, RUNBOOK.md + README/plan doc fixes (see Day 27 section; e2e 228/0) |
 | 28 | Day 28 — Final review vs Definition of Done + full regression | all | TODO |
 | U1 | U1 Client redesign 1 - A: home screen (single viewport, 3 cards, 5-entry bar), B: pre-practice setup screen | client (+1 shared constant) | DONE - 2 commits (0edb9a9, d1048e6); typecheck clean, client tests 308/308, build green |
+| C1 | C1 Game change: snooker replaced with chess | all | DONE - commit fd69c21 (see C1 section); shared 38, server 132, client 109, admin 33 tests green; e2e 18/18 |
 
-> Current focus: **U1 Client redesign phase 1 delivered - Section A (home screen) and
-> Section B (pre-practice setup screen), two commits, nothing pushed; typecheck clean,
-> client tests 308/308, build green** - next planned phase: **Day 28 - Final review vs
-> Definition of Done + full regression**. Say "work on Day 28" (or "next phase") to
-> start.
+> Current focus: **C1 — the game is now chess** (rules engine, clocks, rooms, board UI,
+> practice robot, admin replay). Next planned phase: **Day 28 - Final review vs
+> Definition of Done + full regression**, now against the chess game.
 ---
 
 ## 6. Completed Sessions (record, for reference)
+
+### C1 · Game change: snooker replaced with chess (verified)
+
+Goal: replace the snooker game with chess and leave every other feature unchanged.
+
+Built:
+- **shared** — `chess/engine.ts` (legal moves, check/mate/stalemate, castling, en
+  passant, promotion, repetition, fifty-move, insufficient material, FEN, SAN),
+  `chess/match.ts` (games inside a best-of match, colours alternating, drawn games
+  replayed, 5+3 clocks, snapshots), `chess/ai.ts` (alpha-beta robot, EASY/MEDIUM/HARD,
+  ~350 ms budget). Snooker physics and rules removed.
+- **server** — chess `GameRoom` (server clocks, flag fall, clock paused while the side
+  to move is disconnected, next game after a pause, resignation), `move:play` socket
+  event with shape and flood checks, robot wrapper, `scripts/e2e.ts` rewritten for chess.
+- **client** — DOM chess board (`src/chess/`): click or drag, legal-move hints,
+  promotion picker, clocks, move list, captured material, board flipped for black;
+  lobby copy, rules/help, loading screen and artwork switched to chess; unused 3D
+  table, cue, camera and playback code and assets removed.
+- **admin-app** — move-by-move replay on a chess board.
+- Fixed a duplicate `dateOfBirth` field in `schema.prisma` that stopped `prisma generate`.
+
+Verified:
+- Perft counts on four reference positions; 38 shared, 132 server (with a database and
+  `ADMIN_PUSH_ENABLED=true`), 109 client and 33 admin tests green; all packages typecheck.
+- `pnpm e2e` 18/18: staked BO1 decided by checkmate with settlement (winner 1 → 1.8 USDT,
+  loser 1 → 0), illegal/out-of-turn/malformed moves refused, robot reply in practice,
+  resignation.
+- In a browser: practice game against the robot (click and drag moves), a two-browser
+  1 USDT match ending in checkmate with correct result screens, phone layout at 390 px.
 
 ### Day 1 – 10 · Foundation (all verified at the time)
 - Monorepo + pnpm workspaces; `shared` / `server` / `client` layout.

@@ -1,9 +1,15 @@
-# Snooker Platform — Development Plan / Technical Specification
+# Chess Platform — Development Plan / Technical Specification
 
 This document is the technical blueprint for building the platform in the base plan
-(`online_multiplayer_snooker_game_complete_plan.md`). It defines exactly what we build,
+(`online_multiplayer_chess_game_complete_plan.md`). It defines exactly what we build,
 the stack, the folder layout, the database schema, the game engine, the realtime
 protocol, the wallet/settlement system, and the build order.
+
+> **History:** the platform was first built as a snooker game (deterministic ball
+> physics, a 3D table, snooker rules). The game has since been replaced with chess;
+> every other part of the platform (accounts, wallet, stakes, matchmaking,
+> tournaments, progression, admin) carried over unchanged. This spec describes the
+> chess build.
 
 Build principle: everything is built and tested with **virtual credits** first.
 The real-money/crypto module stays an isolated, disabled-by-default subsystem.
@@ -42,10 +48,11 @@ Game Engine  ->  Match Service  ->  Settlement Service  ->  Wallet Ledger  ->  P
 ```
 
 Rules:
-- The **server is authoritative**. Clients only send shot inputs; the server
-  simulates physics + rules and broadcasts the resulting state.
-- The **game engine is shared code** (a `shared` package) so the server and client
-  use the identical deterministic physics/rules code.
+- The **server is authoritative**. Clients only send moves (`from`, `to`, optional
+  promotion); the server checks turn and legality, runs the clocks and broadcasts
+  the resulting position.
+- The **game engine is shared code** (a `shared` package) so the server, the client
+  (legal-move highlighting) and the admin app (replay) use the identical rules code.
 - The **wallet** never stores "one balance field". It is a ledger of transactions.
 - **Crypto/deposits/withdrawals are a separate module** that stays off until legal setup is done.
 
@@ -56,9 +63,9 @@ Rules:
 ### Monorepo (npm workspaces / pnpm)
 ```
 packages/
-  shared/   pure TS: types, constants, deterministic physics, snooker rules engine
+  shared/   pure TS: types, constants, chess rules engine, match/clock logic, practice AI
   server/   Node.js + TypeScript: REST API, Socket.IO game server, services
-  client/   Vite + TypeScript: UI + Canvas/WebGL renderer
+  client/   Vite + TypeScript: lobby UI + DOM chess board
 ```
 
 ### Backend
@@ -80,16 +87,18 @@ packages/
 | Build              | Vite                         |
 | Language           | TypeScript                   |
 | UI                | React (or vanilla TS; decide on start of Phase 1) |
-| Game rendering     | Custom Canvas 2D renderer (2D top-down) with option to upgrade to WebGL/3D later |
+| Game rendering     | DOM/CSS chess board (CSS grid, Unicode piece glyphs, pointer events for click and drag) |
 | Realtime client    | Socket.IO client             |
 | State              | Zustand (if React used)      |
 
-### Why deterministic shared physics
-Server and client must agree on outcomes without disagreement. The physics module:
-- Fixed timestep (e.g. 240 Hz physics steps stepped at 60 Hz simulation ticks).
-- No `Math.random()` inside the simulation; strictly seeded randomness only.
-- Float-safe: use a fixed order of operations; snap tiny velocities to zero.
-This lets only the server simulate, and clients simply render server snapshots.
+### Why a shared, pure rules engine
+Server, client and admin app must never disagree about what is legal:
+- The engine is pure functions over a plain position object (board array, side to
+  move, castling rights, en-passant square, move counters) — no I/O, no clocks, no
+  randomness.
+- The server is the only authority; the client runs the same code just to offer
+  legal moves and show a move instantly while the server confirms it.
+- The practice AI takes an injectable random source, so its play can be seeded.
 
 ---
 
@@ -108,18 +117,14 @@ root
 └─ packages/
    ├─ shared/
    │  ├─ src/
-   │  │  ├─ constants.ts         # ball sizes, table dims, friction, restitution
-   │  │  ├─ rng.ts               # seeded PRNG (mulberry32 / xorshift)
-   │  │  ├─ vec.ts               # small vector math (deterministic)
-   │  │  ├─ physics/
-   │  │  │  ├─ world.ts          # ball simulation loop
-   │  │  │  ├─ collision.ts      # ball-ball, cushion, pocket
-   │  │  │  └─ cue.ts            # spin/english model
-   │  │  ├─ rules/
-   │  │  │  ├─ snooker.ts        # turn/colour/foul/re-spot logic
-   │  │  │  └─ frame.ts          # frame + match (best-of) flow
-   │  │  ├─ state.ts             # immutable-ish game state types
-   │  │  └─ events.ts            # typed domain events (ballPotted, foul, ...)
+   │  │  ├─ constants.ts         # stakes, formats, practice limits, app title
+   │  │  ├─ rng.ts               # seeded PRNG (mulberry32)
+   │  │  ├─ chat.ts              # quick-chat phrase whitelist
+   │  │  ├─ progression.ts       # XP, levels, ranks, badges
+   │  │  └─ chess/
+   │  │     ├─ engine.ts         # board, legal moves, check/mate, draws, FEN, SAN
+   │  │     ├─ match.ts          # games within a match, clocks, snapshots
+   │  │     └─ ai.ts             # practice robot (alpha-beta, time budget)
    │  └─ package.json
    ├─ server/
    │  ├─ src/
@@ -131,10 +136,11 @@ root
    │  │  ├─ users/               # profile, stats, rankings
    │  │  ├─ wallet/              # ledger, balances, match accounting
    │  │  ├─ matches/             # lifecycle, escrow, settlement, history
-   │  │  ├─ game/                # Socket.IO rooms, server-authoritative sim
-   │  │  │  ├─ room-manager.ts
-   │  │  │  ├─ match-simulator.ts
-   │  │  │  └─ handlers.ts
+   │  │  ├─ game/                # Socket.IO server + chess rooms
+   │  │  │  ├─ index.ts          # socket events, reconnect grace, settlement hooks
+   │  │  │  ├─ room.ts           # GameRoom: position, clocks, games, robot
+   │  │  │  └─ throttle.ts       # move shape + flood checks
+   │  │  ├─ bot/                 # practice robot wrapper
    │  │  ├─ admin/               # admin routes + RBAC guard
    │  │  └─ crypto/              # DISABLED module: deposits/withdrawals stubs
    │  └─ prisma/
@@ -143,62 +149,62 @@ root
       ├─ src/
       │  ├─ main.ts
       │  ├─ app/                 # auth pages, dashboard, lobby, profile
+      │  ├─ chess/
+      │  │  ├─ chessView.ts      # board, clocks, move list, promotion picker
+      │  │  ├─ chess.css
+      │  │  └─ sound.ts          # synthesised move / capture sounds
       │  ├─ game/
-      │  │  ├─ canvas-renderer.ts
-      │  │  ├─ input-manager.ts  # aim/power/spin controls
-      │  │  ├─ snapshot-interp.ts# interpolation of server snapshots
-      │  │  └─ network.ts        # Socket.IO wrapper
+      │  │  └─ network.ts        # REST + Socket.IO wrapper
       │  └─ ui/                  # react components / styles
       └─ index.html
 ```
 
 ---
 
-## 4. Game Design Spec (Snooker)
+## 4. Game Design Spec (Chess)
 
-### Table / physics constants (server-authoritative)
-| Constant             | Value             | Notes |
-|----------------------|-------------------|-------|
-| Table playing area   | 3569 × 1778 mm (12ft × 6ft) | real snooker |
-| Ball diameter        | 52.5 mm           | |
-| Ball mass            | 1                | relative, for collisions |
-| Slowest velocity     | 0.01 mm/tick     | below this -> 0 (deterministic stop) |
-| Rolling deceleration | ~0.328 mm/tick²  | cloth resistance, tuned |
-| Ball-ball restitution| 0.95             | |
-| Cushion restitution  | 0.75 (long), 0.80 (short) race-track style | tuned per cushion |
-| Cushion friction     | damp tangential velocity | |
-| Pocket radius        | 54 mm (corner), 58 mm (middle) | entrance capture zone |
-| Max cue power        | normalized 0..1 -> impulse | client power bar |
-| Max spin (english)   | normalized -1..1 horiz/vert | follow/draw/side |
+### Board and pieces
+- Standard 8×8 board; squares indexed 0 (a1) … 63 (h8); pieces as FEN letters
+  (upper case white, lower case black).
+- Full FIDE movement rules: castling (not out of, through or into check), en passant,
+  promotion to queen/rook/bishop/knight.
+- Positions travel as FEN; moves are recorded in standard algebraic notation (SAN).
 
-### Shot input (client -> server)
+### Move input (client -> server)
 ```ts
-type ShotInput = {
-  aimAngle: number;     // radians, 0 = toward red end
-  power: number;        // 0..1
-  spin: { x: number; y: number }; // horizontal (side) and vertical (follow/draw)
-  elevation?: number;   // future: jump/swerve (Phase 2+)
-  timestamp: number;    // client time, for anti-cheat timing checks
+type MoveInput = {
+  from: string;          // "e2"
+  to: string;            // "e4"
+  promotion?: 'q' | 'r' | 'b' | 'n'; // defaults to a queen when omitted
 }
 ```
-Server validates: is it this player's turn, is state `BALLS_SETTLED`, within turn timer,
-input ranges sane. Then it simulates with the shared engine and produces `GameUpdate` events.
+Server validates: the message shape (squares `a1`–`h8`, known promotion piece), the
+flood limits, that it is this player's turn, that the game is running and the clock
+has not run out, and that the move is legal. Then it updates the position, charges
+the mover's clock, records a `MOVE` game event and broadcasts the new snapshot.
 
-### Spin / english model (Phase 2 detail)
-- Ball has position, velocity, angularVelocity (spin vector).
-- On ball-ball contact, surface point contact imparts spin.
-- Follow: vertical spin reduces post-impact rolling or creates friction-assisted roll-through.
-- Draw: vertical negative spin pulls ball backward after contact.
-- Side: alters cushion rebound angle.
-- Keep the model simple + tunable first; add swerve/jump later.
+### Clocks
+- 5 minutes per player per game (`CHESS_CLOCK_MS`) plus a 3-second Fischer increment
+  per move (`CHESS_INCREMENT_MS`).
+- Only the side to move's clock runs; the server owns it and sends remaining times
+  and a deadline with every board update, so all screens count to the same moment.
+- A flag fall loses the game. A disconnected player's clock is paused; the reconnect
+  grace timer decides the match if they do not return.
+
+### Matches (best-of)
+- Formats `BO1 | BO3 | BO5`: first to 1 / 2 / 3 game wins. A game takes the place a
+  frame used to, so match records, settlement and tournaments are unchanged.
+- Colours alternate every game; seat 0 (the table opener, or the human in practice)
+  has white in game 1.
+- A drawn game scores for nobody and is replayed with colours swapped, so a staked
+  match always produces a winner.
 
 ### Renderer (client)
-- Top-down 2D canvas render with polished styling:
-  - Wooden snooker table frame, green cloth with slight radial lighting gradient.
-  - Balls with radial-gradient gloss + fixed number/colour mapping.
-  - Cue with aim line (direction + power length), spin indicator.
-  - Pocket holes, cushion rails.
-- Optional later: three-quarter 3D perspective via canvas transform, then WebGL.
+- DOM/CSS board: CSS grid of squares, Unicode piece glyphs, coordinates on the edge.
+- Click-to-move and drag-and-drop; dots for quiet moves, rings for captures;
+  last-move and check highlights; promotion picker.
+- Player cards with clocks, games won and captured material; scrolling SAN move list.
+- The board is flipped for the player with black; layout adapts down to phone width.
 
 ## 4A. Table Types / Match Modes
 
@@ -253,11 +259,11 @@ Seed 7 ─┘
 - Player vs a **bot opponent**. `stake = 0`, nothing is locked, never touches the wallet.
 - Practice limit (see R2): free, but **max 3 matches/day when the player's wallet
   balance is 0**; **unlimited when the player has balance**.
-- Bot uses the exact same `shot:play` path as a human (server simulates identically).
-- Configurable skill level: EASY / MEDIUM / HARD (aim error, ball selection, break knowledge).
+- Bot plays through the same room move path as a human (the server validates its moves identically).
+- Configurable skill level: EASY / MEDIUM / HARD (search depth 1 / 2 / 3 plies and how often it deliberately plays a random move).
 - Practice matches are **not** recorded in paid stats/rankings (flag on match result),
   but a light practice history is kept for UX.
-- Also used as the onboarding tool: user learns rules/fouls risk-free.
+- Also used as the onboarding tool: user learns the game risk-free.
 
 ### Rules for all modes
 - Server-authoritative simulation and scoring no matter which mode.
@@ -303,35 +309,33 @@ just documented.
 
 ---
 
-## 5. Snooker Rules Engine (shared, deterministic)
+## 5. Chess Rules Engine (shared, pure)
 
-State machine per frame:
+Per game:
 ```
-FRAME_START -> PICKING_RED -> SIMULATING (server) -> SETTLED -> evaluate
-                                                       ├─ potted -> continue
-                                                       ├─ foul -> switch turn + penalty
-                                                       └─ no pot/no foul -> switch turn
-FRAME_END (no balls on, or conceded) -> MATCH_END (best-of-N) 
+GAME_START (white to move) -> move -> legal? ── no  -> refused, nothing changes
+                                          └─ yes -> update position, charge clock
+                                                     -> game over? ── no  -> other side to move
+                                                                  └─ yes -> GAME_END
+GAME_END -> winner scores a game (draw: nobody) -> next game (colours swap) or MATCH_END
 ```
 
-Key rule behaviours to implement (in order of value):
-1. Opening: cue ball in "D", break on reds.
-2. Colour sequence: red -> colour -> red -> colour ... while reds remain; colours
-   re-spotted until all reds potted, then colours in order (y,g,brown,blue,pink,black).
-3. Endgame: potting final colour sequence wins frame (re-spotted black for ties).
-4. Fouls: first ball hit wrong, potting wrong ball, potting cue, no contact at all,
-   off table (ball leaves table), touching ball, cue ball in pocket -> 4/5/6/7 points
-   depending on ball involved ("value of the ball on", min 4).
-5. Foul awards opponent: points + (for foul where the ball on is missed under a snooker)
-   miss rule where configured server-side.
-6. Free ball after snooker (advanced, Phase 3+ of the rules engine).
-7. Turn ends after a foul, or after a potless/foulless visit.
-8. Break tracking, highest break, frame + match (best-of configurable) scoring.
-9. Concession ("conceding a frame with a snooker required") — optional, disabled by default.
+Behaviours (`packages/shared/src/chess/engine.ts`, `match.ts`):
+1. Pseudo-legal move generation for every piece, filtered by "does not leave own king
+   in check"; verified against standard perft counts (start position, "Kiwipete",
+   and two further reference positions).
+2. Castling rights tracked and lost when the king or rook moves or a rook is captured.
+3. En-passant square set after a double pawn push; capture removes the passed pawn.
+4. Promotion with explicit piece choice (queen by default).
+5. Game end: checkmate (side to move in check with no legal move), stalemate,
+   insufficient material, fifty-move rule (100 half-moves), threefold repetition
+   (positions compared by placement, side to move, castling rights and a capturable
+   en-passant square). Draws are applied automatically; nobody has to claim them.
+6. Loss on time (flag fall) and resignation (concedes the whole match).
+7. SAN with disambiguation, captures, castling, promotion, check `+` and mate `#`.
 
-The engine emits typed domain events so the server can persist `game_events` for replay.
-
----
+The room emits typed game events (`MOVE` with the resulting FEN, `FRAME_END` per game
+with the result, `MATCH_END`) which are persisted to `game_events` for the replay.
 
 ## 6. Database Schema (Prisma)
 
@@ -408,7 +412,7 @@ model Match {
   platformFeePct Decimal  @default(0)   // snapshot of config at creation
   format         String  @default("BO3") // BO1 | BO3 | BO5
   winnerId       String?
-  resultJson     Json?   // final frame scores + winner reason
+  resultJson     Json?   // games won + winner reason
   startedAt      DateTime?
   finishedAt     DateTime?
   createdAt      DateTime @default(now())
@@ -459,7 +463,7 @@ model GameEvent {
   id        String   @id @default(cuid())
   matchId   String
   seq       Int
-  type      String   // SHOT | BALL_POTTED | FOUL | TURN_CHANGE | STATE_START | SNAPSHOT | DISCONNECT | RESULT
+  type      String   // MOVE (san, from, to, promotion?, fen, bySeat) | FRAME_END (one game: winnerSeat, result) | MATCH_END
   data      Json
   createdAt DateTime @default(now())
   @@unique([matchId, seq])
@@ -565,74 +569,72 @@ Namespace: `/game`. Auth via handshake cookie/JWT.
 
 Client -> Server:
 ```
-match:create   {stake, format}
 match:join     {matchId}
-match:cancel   {matchId}            // only before FUNDS_LOCKED or pre-start with rules
-shot:play      {matchId, input: ShotInput}
-concede        {matchId}
-ping           {}                    // latency probe (anti-cheat)
+move:play      {matchId, move: {from, to, promotion?}}
+concede        {matchId}             // resign the match
+match:chat     {matchId, phraseId}   // whitelisted quick-chat phrase ids only
 ```
 
 Server -> Client (room of matchId):
 ```
-match:created   {matchId}
-match:playerJoined {players, seat}
-match:start     {frame: 1, breakSide, state snapshot}
-game:update     {seq, type, data}    // events as they happen (pot, foul, cushions eta)
-snapshot        {seq, balls[], turn, scores, step: 'SETTLED'|'RUNNING'}
-turn:change     {playerId, scores}
-frame:end       {winnerId, scores}
-match:end       {result, reason}
-error           {code, message}
+match:joined    {matchId, seat, snapshot, turn}
+match:start     {frameIndex, snapshot, turn}        // game 1
+game:update     {frame: snapshot, events, turn}     // after every move
+frame:start     {frameIndex, snapshot, turn}        // next game of a best-of
+turn:clock      {turn}                              // clock paused/resumed
+match:end       {winnerSeat, reason, framesWon}
+opponent:disconnected | opponent:countdown | opponent:reconnected
+match:chat      {seat, phraseId}
+error           {code}
 ```
 
-Server-authoritative loop:
-1. Receive `shot:play`.
-2. Validate turn, state, timing, input.
-3. Lock the room (reject further shots).
-4. Simulate using `shared` engine (fixed steps). Collect `GameEvent[]`.
-5. Persist events to `GameEvent` (batch), update frame/match state in DB where cheap.
-6. Broadcast events + final snapshot.
-7. If frame/match over -> transition, emit `frame:end` / `match:end`, trigger settlement.
+`snapshot` = `{fen, whiteSeat, turnSeat, moves (SAN), lastMove, inCheck, result,
+winnerSeat, clocksMs}`; `turn` = `{turnDeadlineAt, clocksMs, turnSeat, paused, serverNow}`.
 
-Client rendering: `snapshot` interpolates ball positions; `game:update` plays audio/nudges.
+Server-authoritative loop:
+1. Receive `move:play`.
+2. Check the message shape and flood limits.
+3. Check seat, turn, game running, clock not expired, move legal.
+4. Apply the move, charge the mover's clock (plus increment), detect game end.
+5. Persist the `MOVE` (and any `FRAME_END`) event; broadcast `game:update`.
+6. If the game ended: score it; after a short pause start the next game
+   (`frame:start`) or end the match (`match:end`) and trigger settlement.
+
+Client rendering: the board shows a move the moment the player makes it and is
+corrected by the next snapshot; a refused move is taken back.
 
 Reconnect/disconnect handling:
 - On disconnect, room marks player `DISCONNECTED`, starts grace timer (`reconnectGraceSec`).
-- Reconnect restores state from last snapshot + replays missed events by `seq`.
+- Reconnect restores the board and clocks from the current snapshot. The disconnected side's clock is paused during the grace period.
 - After timeout -> `ABANDONED` -> rules: opponent wins, funds settled per policy (virtual: refund opponent, confiscate abandoner to platform in real-money mode; disabled in dev with REFUND).
 
 ---
 
 ## 8A. Bot AI Opponent (Practice Mode)
 
-The robot is implemented as another "player" in the room. It issues the same
-`shot:play` inputs through the same server path — no special simulation.
+The robot is implemented as another "player" in the room. Its moves go through the
+same room move path as a human's, so they are validated identically.
 
 ```
-BOT LOOP (server-side, per turn):
-  1. Evaluate table state from shared rules engine
-     - ball on, easiest pottable colours/reds
-     - cue ball position + target pockets
-  2. Choose a target ball (if potting) else a safety (roll back to baulk)
-  3. Compute aim line + power (distance to ball, target pocket)
-  4. Add skill-level error (angle/power jitter, chosen per RNG seed)
-  5. Emit shot:play as if a human sent it (with bot difficulty obeying turn timer)
+BOT TURN (server-side):
+  1. Wait a short "thinking" delay (BOT_MOVE_DELAY_MS).
+  2. Search the position with alpha-beta (material + piece-square tables,
+     capture-only quiescence search, repetition and fifty-move awareness).
+  3. Deepen one ply at a time up to the level's depth, inside a ~350 ms budget,
+     keeping the best move of the deepest finished search.
+  4. Play the move through the normal room path.
 ```
 
-Skill levels control: aim error jitter, power error, willingness to attempt
-difficult (long/angled) pots, foul avoidance, snooker safety awareness.
-
-| Level    | Jitter      | Pot ability | Safety play |
-|----------|-------------|-------------|-------------|
-| EASY     | high        | weak        | none |
-| MEDIUM   | medium      | moderate    | basic |
-| HARD     | low         | strong      | active snookers |
+| Level    | Search depth | Random move chance |
+|----------|--------------|--------------------|
+| EASY     | 1 ply        | 30%                |
+| MEDIUM   | 2 plies      | 8%                 |
+| HARD     | 3 plies      | 0%                 |
 
 Constraints:
 - Bot never touches the wallet; `stake = 0`, no `MATCH_ENTRY`, no payout.
 - Bot is role `BOT` and is **never** a real player in 1v1/tournament tables (R1).
-- Bot move latency is randomized in a human-like band (1–4 s) to stay realistic.
+- Thinking is capped (~350 ms) because the search runs on the server's event loop; a fixed delay makes the reply feel natural.
 - Practice matches excluded from rankings/leaderboards (`matchType=PRACTICE`
   filters stats queries).
 - Practice plays/day limited only when the player has zero balance (R2).
@@ -676,11 +678,10 @@ Runs inside the same DB transaction that commits the match result. Idempotency:
 ## 10. Anti-Cheat & Fairness
 
 Implementation (in order):
-1. Server-authoritative simulation (nothing trusted from client except shot intent).
+1. Server-authoritative rules (nothing trusted from the client except the move it wants to play).
 2. Input validation + rate limiting per socket + per-user.
-3. Turn timer enforced server-side; `shot:play` after timeout = auto foul / forfeit.
-4. Timing/pattern analysis: reject shots with millisecond latency anomalies, replays of
-   identical inputs.
+3. Chess clocks enforced server-side; a move that arrives after the flag fell loses on time.
+4. Malformed or flooding move traffic is counted and raised as a fraud flag.
 5. Multi-account detection: IP/device fingerprint, same device co-login, referral anomalies.
 6. Win-rate / stake anomaly monitoring -> `FraudFlag` + auto-restrict thresholds.
 7. Full `GameEvent` log per match -> replay + audit + dispute resolution.
@@ -717,26 +718,25 @@ Nothing here can be turned on by a client; it requires server config + env secre
 - Monorepo, lint/format/tsconfig, docker-compose (postgres), Prisma schema, .env.example.
 - CI-less local `pnpm -r dev`.
 
-### M1 — Shared engine skeleton + ball physics (no rules)
-- World sim, collisions, cushions, pockets, stop condition.
-- Deterministic unit tests (seeded, golden snapshots).
+### M1 — Shared chess engine
+- Board, move generation, legality, FEN/SAN.
+- Perft tests against standard reference positions.
 
-### M2 — Rules engine
-- Red/colour cycle, fouls, endgame, frame + best-of match, breaks.
-- Tests: standard snooker scenarios, foul tables.
+### M2 — Game end and match flow
+- Checkmate, stalemate, automatic draws, clocks, best-of games, colour alternation.
 
-### M3 — Minimal renderer
-- Canvas table, balls, cue, aim line, power/spin controls.
+### M3 — Board UI
+- DOM board, click/drag moves, legal-move hints, promotion picker, clocks, move list.
 
 ### M4 — Auth + users + wallet ledger
 - Register/login, profiles, wallet + transactions API (virtual CR).
 - Starting virtual balance for dev.
 
 ### M5 — Singleplayer vs AI (optional but very useful)
-- AI plays via same ShotInput path; proves engine end-to-end.
+- AI plays via the same room move path; proves engine end-to-end.
 
 ### M6 — Multiplayer realtime
-- Socket.IO rooms, turn system, snapshots + interpolation, disconnect/grace.
+- Socket.IO rooms, turn system, clocks, snapshots, disconnect/grace.
 - Matches + match history + concession (Mode 1: 1v1 complete).
 
 ### M6b — Practice mode (Robot AI)
@@ -752,7 +752,7 @@ Nothing here can be turned on by a client; it requires server config + env secre
 
 ### M8 — Anti-cheat + audit hardening, leaderboards, notifications.
 
-### M9 — Polishing: audio, animations, lighting, animations, responsive UI.
+### M9 — Polishing: sounds, animations, responsive UI.
 
 ### M10 — Production: deploy, backups, monitoring, scaling.
 ### M11 — Legal gate (NOT dev): enable jurisdiction checks, KYC provider, crypto provider.
@@ -763,10 +763,10 @@ Acceptance per milestone = automated tests pass + feature demo-able.
 
 ## 14. Testing Strategy
 
-- **Shared engine**: unit tests with fixed seeds + golden-state snapshots.
+- **Shared engine**: perft counts, rule scenarios (castling, en passant, promotion, draws), seeded AI tests.
 - **REST**: Fastify `inject` tests + Prisma test DB (transactions rolled back).
-- **Realtime**: two mock Socket.IO clients against one server (deterministic sim makes
-  this easy).
+- **Realtime**: room unit tests with fake timers, plus `pnpm e2e` driving real Socket.IO
+  clients through a staked checkmate, practice and a resignation.
 - **Wallet**: property tests for invariants (`available+locked == ledger sum`),
   concurrency test (two join actions), idempotency test (settle twice = once).
 - **E2E (later)**: Playwright for lobby->match->result on virtual credits.
@@ -799,11 +799,11 @@ REAL_MONEY_ENABLED=false
 
 ## 16. Decisions Pending (open questions)
 
-1. React vs vanilla TS for UI (recommend React for speed of building the wider UI).
-2. Canvas 2D for MVP vs immediate WebGL (recommend 2D first, design renderer to be swappable).
-3. AI opponent in M5/M6b — confirmed: yes, required for Practice mode (M6b).
-4. Miss rule / free ball complexity level for v1 (recommend "miss rule: off; free ball: off, add later").
-5. Concession rule allowed in real-money mode (recommend no, only "no balls on" + fouls).
+1. React vs vanilla TS for UI — decided: vanilla TS.
+2. Board rendering — decided: DOM/CSS board (no canvas or WebGL needed for chess).
+3. AI opponent — confirmed: required for Practice mode.
+4. Time control — 5+3 for every table today; per-tier or per-match time controls could be added later.
+5. Draw offers between players — not implemented (draws are automatic only); a possible addition.
 
 ---
 
@@ -816,8 +816,8 @@ A user can:
   (3/day when balance is 0, unlimited when balance > 0),
 - create/join a 1v1 match at a chosen stake,
 - create/join an **8-player knockout tournament** and play its rounds,
-- play a full snooker frame (or best-of-3) vs another real user in realtime,
-- have the server apply rules, fouls and scoring correctly,
+- play a full chess game (or best-of-3 / best-of-5) vs another real user in realtime,
+- have the server enforce legal moves, clocks and game results correctly,
 - see match end, winner, and correct virtual-credit prize/commission transactions in history
   (1v1 + tournament only; practice never touches the wallet),
 - admin can configure commission/stakes, view matches + transaction audit, and manage tournaments.

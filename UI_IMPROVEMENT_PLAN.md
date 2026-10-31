@@ -1,4 +1,9 @@
-# UI Improvement Plan — Snooker Arena
+# UI Improvement Plan — Chess Arena
+
+> Written while the game was snooker. The game screen has since been replaced with a
+> chess board (`packages/client/src/chess/`); the auth, lobby, component and
+> accessibility work below carried over unchanged. Game-screen items are updated for
+> chess; the progress notes are kept as the record of what was done at the time.
 
 ## Progress Log
 
@@ -12,8 +17,8 @@ Updated as work lands. Status: **Phases 1–4 and 7 substantially done; Phase 5 
 | 2. Auth screen | Done | Arena backdrop, glass card, brand lockup, tabbed Login/Register, gold submit, disclaimer footer. |
 | 3. Lobby | Done | Sticky header, featured banner, mode cards, open-tables strip, stat tiles. |
 | 4. Components | Done | Buttons, cards, inputs, header, notifications, overlays. |
-| 5. Animations | Partly | Button shine/lift, card hover, auth entrance, page transition, skeleton shimmer, score tick. Still no shot-playback flourish. |
-| 6. Game HUD | Partly | Scoreboard, power rail, shot clock all built. Score prominence and tick flash just improved. |
+| 5. Animations | Partly | Button shine/lift, card hover, auth entrance, page transition, skeleton shimmer, score tick. |
+| 6. Game screen | Done (chess) | Board with legal-move hints, last-move/check highlights, player cards with clocks and games won, captured material, move list, promotion picker. |
 | 7. Responsive & a11y | Done | 768/480 breakpoints, global `:focus-visible`, global `prefers-reduced-motion`, contrast audited. |
 
 ### Correctness work done alongside the visual work
@@ -44,17 +49,10 @@ These were not in the original plan but had to be fixed to make the UI honest:
 
 ### Still to do
 
-- [ ] Verify visually in a browser at 1280 / 768 / 480 widths. No browser was available
-      in the working session, so layout has been reasoned about and compiled but **not
-      seen**. This is the main outstanding risk.
-- [x] Confirm the reduced-motion block does not stall the shot-playback path. It does not:
-      the shot clock and the power rail both write values from their own
-      `requestAnimationFrame` loop, nothing in the client waits on `transitionend` or
-      `animationend`, and the two properties that carry meaning
-      (`.power-rail-fill`, `.shot-timer-arc`) keep a 0.2s transition under reduced motion
-      rather than being scrubbed to zero.
-- [ ] Shot-playback flourish (Phase 5 tail): nothing yet on a potted ball beyond the
-      existing sound.
+- [x] Chess screen checked in a browser at 1280×800 and 390×844 (no horizontal
+      overflow on the phone). Lobby screens at 768 / 480 still to be checked.
+- [ ] Piece-move animation (sliding a piece from square to square) on the chess board;
+      today a move appears instantly.
 - [ ] Add a `prefers-contrast` pass if high-contrast support is wanted beyond 4.5:1.
 - [ ] Lobby: tournament card and open-tables strip both fetch; consider a single refresh
       so they cannot disagree for a moment.
@@ -93,15 +91,15 @@ Verified failing on a clean tree with these changes stashed. Out of scope here.
 
 ## Current State Assessment
 
-The app uses **vanilla TypeScript** with a single `styles.css` and direct DOM manipulation. The current UI has a generic "GitHub dark" look — functional but not immersive or snooker-themed.
+The app uses **vanilla TypeScript** with a single `styles.css` and direct DOM manipulation. The current UI has a generic "GitHub dark" look — functional but not immersive.
 
 ---
 
 ## Design Vision
 
-Transform the UI into a **premium, broadcast-quality snooker experience** inspired by:
-- **BBC/ESPN Snooker broadcasts** — dark arena, spotlight on the table, clean scoreboard
-- **Real snooker venues** — deep greens, rich wood tones, brass/gold accents
+Transform the UI into a **premium, tournament-quality chess experience** inspired by:
+- **Broadcast chess coverage** — dark arena, spotlight on the board, clear clocks
+- **Classic chess clubs** — warm wood board tones, brass/gold accents
 - **Modern sports apps** — smooth animations, glassmorphism, polished micro-interactions
 
 ---
@@ -109,7 +107,7 @@ Transform the UI into a **premium, broadcast-quality snooker experience** inspir
 ## Phase 1: Design System & Theme Overhaul
 
 ### 1.1 Color Palette — "Arena Night"
-Replace the generic dark theme with a snooker-arena-inspired palette:
+Replace the generic dark theme with an arena-inspired palette (the green `--felt` tokens date from the snooker build and are still defined):
 
 | Token | Current | New | Usage |
 |-------|---------|-----|-------|
@@ -178,7 +176,7 @@ Replace the generic dark theme with a snooker-arena-inspired palette:
 ### New Design: "Welcome to the Arena"
 - **Full-screen background**: Dark arena with subtle spotlight effect (CSS radial gradients)
 - **Centered card with glassmorphism**: Frosted glass panel with gold border accent
-- **Brand header**: Large serif "SNOOKER ARENA" with gold gradient text + snooker ball icon
+- **Brand header**: Large serif "CHESS STAKE" with gold gradient text + crown icon
 - **Animated entrance**: Card fades in with subtle scale + translate
 - **Input styling**: Dark inputs with gold focus glow, floating labels
 - **Button**: Gold gradient button with hover shine effect
@@ -189,10 +187,10 @@ Replace the generic dark theme with a snooker-arena-inspired palette:
 ```
 ┌─────────────────────────────────────┐
 │          ╭───────────╮              │
-│          │  🎱 Logo  │              │
+│          │  ♚ Logo  │              │
 │          ╰───────────╯              │
-│      S N O O K E R   A R E N A      │
-│      ─── Premium Snooker ───        │
+│       C H E S S   S T A K E         │
+│       ─── Premium Chess ───         │
 │                                     │
 │  ┌─────────────────────────────┐    │
 │  │  Email                      │    │
@@ -239,7 +237,7 @@ Replace the generic dark theme with a snooker-arena-inspired palette:
 ### Layout
 ```
 ┌──────────────────────────────────────────────────┐
-│ 🎱 Snooker Arena    👤 Player  💰 1,000 CR  🔔  │
+│ ♚ Chess Stake       👤 Player  💰 1,000 CR  🔔  │
 ├──────────────────────────────────────────────────┤
 │                                                  │
 │  ╔═══════════════════════════════════════════╗   │
@@ -295,7 +293,7 @@ Replace the generic dark theme with a snooker-arena-inspired palette:
 
 ### 4.4 Header
 - Sticky with backdrop blur
-- Gold logo with snooker ball icon
+- Gold logo with crown icon
 - User chip with avatar circle (first letter)
 - Wallet display with coin icon and animated balance
 
@@ -339,23 +337,20 @@ Replace the generic dark theme with a snooker-arena-inspired palette:
 
 ---
 
-## Phase 6: Game Screen HUD Polish
+## Phase 6: Game Screen (Chess Board) Polish
 
-### 6.1 Scoreboard
-- Broadcast-style: dark bar with gold trim
-- Player names in elegant serif
-- Large score numbers in condensed font
-- Active player indicator: gold glow pulse
+### 6.1 Player cards
+- Dark glass bar per player with avatar, name, games won and captured material
+- Active player indicator: gold border glow
 
-### 6.2 Power Bar
-- Vertical gradient bar (green → yellow → red)
-- Smooth fill animation
-- Glow effect at high power
+### 6.2 Board
+- Warm light/dark squares, coordinates on the edge
+- Dots for quiet moves, rings for captures, gold last-move tint, red check glow
+- Drag ghost piece follows the pointer
 
-### 6.3 Shot Timer
-- Circular countdown ring (conic gradient)
-- Color transitions: green → gold → red
-- Pulse animation when < 10 seconds
+### 6.3 Clocks
+- Large tabular digits; the running clock is inverted (light on dark → dark on light)
+- Turns red under 30 seconds; tenths shown under 10 seconds
 
 ---
 
@@ -384,7 +379,7 @@ Replace the generic dark theme with a snooker-arena-inspired palette:
 | 4 | Redesign lobby/main page | `main.ts` (renderLobby) + `styles.css` |
 | 5 | Polish header & navigation | `main.ts` (header) + `styles.css` |
 | 6 | Add animations & transitions | `styles.css` |
-| 7 | Polish game HUD | `game/hud.ts` + `styles.css` |
+| 7 | Polish game screen | `chess/chessView.ts` + `chess/chess.css` |
 | 8 | Responsive refinements | `styles.css` |
 
 ---
@@ -394,14 +389,14 @@ Replace the generic dark theme with a snooker-arena-inspired palette:
 1. **`packages/client/index.html`** — Add Google Fonts, update meta
 2. **`packages/client/src/styles.css`** — Complete theme overhaul
 3. **`packages/client/src/main.ts`** — Auth screen, lobby, header, card components
-4. **`packages/client/src/game/hud.ts`** — Scoreboard, power bar, timer styling
+4. **`packages/client/src/chess/chessView.ts`, `chess.css`** — Board, player cards, clocks, move list
 
 ---
 
 ## Success Criteria
 
-- [ ] Login screen looks like a premium snooker venue entrance
-- [ ] Lobby feels like a real snooker hall with live tables
+- [ ] Login screen looks like a premium chess club entrance
+- [ ] Lobby feels like a real chess hall with live tables
 - [ ] Gold/arena theme is consistent across all screens
 - [ ] Smooth animations on all interactions
 - [ ] Responsive on tablet and mobile

@@ -1,4 +1,9 @@
-# Deploying Snooker Stake
+# Deploying Chess Stake
+
+> Infrastructure names (the `snooker` directory, `snooker.service` systemd unit,
+> `snooker-postgres` container, `snooker/snooker` database login and the seeded
+> `@snooker.test` emails) are kept from the original snooker build so existing
+> servers keep working. Only the product changed.
 
 The whole system, start to finish: the server on AWS EC2, the player app (Android APK,
 plus an optional web version), and the staff app (Android APK). Follow the parts in order;
@@ -7,8 +12,8 @@ both apps have the server's address built in, so the server comes first.
 | Piece | Where it runs | Built with |
 |---|---|---|
 | Server (API + game sockets) + PostgreSQL | One EC2 instance | Node 20, pnpm, Docker |
-| Player app "Snooker Stake" (`com.snookerx.game`) | Players' phones (APK) and optionally the web | Vite + Capacitor, built on your PC |
-| Staff app "Snooker Admin" (`com.snookerarena.admin`) | Staff phones (APK) | Expo, built in the cloud by EAS |
+| Player app "Chess Stake" (`com.snookerx.game`) | Players' phones (APK) and optionally the web | Vite + Capacitor, built on your PC |
+| Staff app "Chess Admin" (`com.snookerarena.admin`) | Staff phones (APK) | Expo, built in the cloud by EAS |
 
 All current work is on the branch **`merge/friend-changes`**. Use that branch (or `main`
 once it has been merged there).
@@ -54,7 +59,7 @@ sudo usermod -aG docker $USER && newgrp docker
 
 ### 1.3 Get the code and build
 ```bash
-git clone https://github.com/rafey581/model.git snooker && cd snooker
+git clone https://github.com/rafey581/chess.git snooker && cd snooker
 git checkout merge/friend-changes
 pnpm install
 pnpm build          # shared -> server (prisma generate + tsc) -> client web build
@@ -96,7 +101,7 @@ Never run `db:seed` again on a live database, and never `db:migrate` (that is fo
 `/etc/systemd/system/snooker.service`:
 ```ini
 [Unit]
-Description=Snooker Stake server
+Description=Chess Stake server
 After=network.target docker.service
 
 [Service]
@@ -148,7 +153,7 @@ Back up first: `docker exec snooker-postgres pg_dump -U snooker snooker > backup
 
 ---
 
-## 2. Player app APK (Snooker Stake)
+## 2. Player app APK (Chess Stake)
 
 Built on your own computer.
 
@@ -187,7 +192,7 @@ phone and install (allow "install unknown apps").
 
 ---
 
-## 3. Staff app APK (Snooker Admin)
+## 3. Staff app APK (Chess Admin)
 
 Built in the cloud by EAS.
 
@@ -271,8 +276,8 @@ player can read their password and session as it goes past. To encrypt it:
 ## 4. Checklist after deploying
 
 - [ ] `curl <SERVER>/api/health` shows `"db":"up"`
-- [ ] Player APK: sign up, log in, reload stays signed in, practice starts (6 reds)
-- [ ] A 100 USDT or Master Match table opens (proves `maxStake` was raised; plays 10 reds)
+- [ ] Player APK: sign up, log in, reload stays signed in, practice starts and the robot answers a move
+- [ ] A 100 USDT or Master Match table opens (proves `maxStake` was raised)
 - [ ] Deposit request → staff phone (app open) rings within ~10 s → approve → player balance goes up
 - [ ] Withdrawal request → balance shows it held → approve → staff pays out
 - [ ] Support message from the player → appears in the staff Support tab → reply arrives

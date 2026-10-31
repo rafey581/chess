@@ -16,7 +16,8 @@ rules engine and a ledger-based wallet.
 > demonstrable, offline bookkeeping economy denominated in USDT.
 
 See also:
-- `development_plan.md` — original (snooker-era) technical specification
+- `development_plan.md` — technical specification
+- `online_multiplayer_chess_game_complete_plan.md` — base project plan (product, wallet, compliance)
 - `product_showcase_client_review.md` — client-facing product overview
 - `RUNBOOK.md` — boot, migration, backup/restore and monitoring procedures
 

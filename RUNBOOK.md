@@ -1,4 +1,4 @@
-# Runtime Runbook — Snooker Platform
+# Runtime Runbook — Chess Platform
 
 Operational notes for booting, upgrading, backing up and monitoring the platform.
 Targets the local/docker-compose topology (no cloud deploy yet — see Day 28 gate).
@@ -59,7 +59,7 @@ Both are exempt from the maintenance gate so probes stay reachable. Probe
 - Key events:
   - `recovered stale matches after restart` (`{count}`) — wallet locks for matches
     left `MATCH_STARTED` at boot are refunded (reason `server_recovery_refund`).
-  - `frame ended`, `match ended`, grace-timer resolutions, room debug lines.
+  - `game ended` (one chess game of a match), `match ended`, grace-timer resolutions, room debug lines.
 - Start failures and all Prisma `warn`/`error` lines also go to stderr/stdout JSON.
 
 ## 5. Backup / restore
@@ -92,7 +92,7 @@ Restore runs while the server is down (or matches will fight the recreated DB).
 
 - **Boot recovery:** `recoverMatchValidity()` refunds any non-practice `MATCH_STARTED`
   match at startup. Alert on `count > 0` — it means the previous run died mid-match.
-- **Rooms / players:** watch `rooms` in the boot line and per-frame `frame ended`/
+- **Rooms / players:** watch `rooms` in the boot line and per-game `game ended`/
   `match ended` volume. Socket.IO runs on the same HTTP port as the API.
 - **Wallets / ledger:** a LedgerEntry exists for every credit/debit; run the e2e
   §8 audit (`pnpm e2e`) or check `ledger.test.ts` invariants after any restore.
@@ -137,7 +137,7 @@ Send SIGINT/SIGTERM: server logs `shutting down`, closes HTTP + socket rooms, th
   Admin → Withdrawals debits the same USDT amount (1:1) from the wallet in the same
   transaction; the operator must send the USDT out of band *before* approving.
 - `CLIENT_ORIGIN` is a comma-separated allowlist; keep it to real origins.
-- Turn timers, per-socket + per-user rate limits and shot-input validation are enforced
+- Chess clocks, per-socket + per-user rate limits and move-input validation are enforced
   server-side (Day 23).
 
 ## 9. Known gaps (Day 28 candidates)

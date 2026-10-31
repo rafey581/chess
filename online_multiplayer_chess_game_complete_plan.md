@@ -1,17 +1,21 @@
-# Online Multiplayer Snooker Gaming Platform — Complete Project Plan
+# Online Multiplayer Chess Gaming Platform — Complete Project Plan
+
+> This plan was originally written for a snooker game. The game has since been
+> replaced with chess; the platform plan (accounts, wallet, stakes, compliance,
+> crypto, admin) is unchanged and the game-specific sections now describe chess.
 
 ## 1. Project Overview
 
-The project is a professional web-based multiplayer snooker gaming platform.
+The project is a professional web-based multiplayer chess gaming platform.
 
 The main concept is:
 
 - Users create accounts.
 - Users have a wallet.
 - Users can find other players online.
-- Two players enter a snooker match.
+- Two players enter a chess match.
 - The match is played in real time.
-- The game should have realistic snooker physics and a high-quality table/interface.
+- The game should implement the full rules of chess with a high-quality board/interface.
 - The intended commercial model is real-money/value wagering.
 - Players may deposit cryptocurrency.
 - Players can use the deposited value to enter matches.
@@ -27,14 +31,14 @@ Important: the technical design is feasible, but real-money wagering is a regula
 
 # 2. Core Product Concept
 
-The desired product is not simply a normal snooker game.
+The desired product is not simply a normal chess game.
 
 It is intended to be a complete online gaming platform containing:
 
 1. User accounts
 2. Player profiles
 3. Online multiplayer
-4. Snooker game engine
+4. Chess game engine
 5. Matchmaking
 6. Wallet
 7. Deposits
@@ -65,7 +69,7 @@ Find Opponent
       ↓
 Enter Match
       ↓
-Play Snooker
+Play Chess
       ↓
 Server Determines Winner
       ↓
@@ -128,7 +132,7 @@ Available Balance
       ↓
 Match Entry
       ↓
-Snooker Match
+Chess Match
       ↓
 Winner Determined
       ↓
@@ -214,7 +218,7 @@ Crypto creates an additional virtual-asset/payment regulatory layer.
 
 The following are engineering problems:
 
-- Snooker physics
+- Chess rules engine
 - Graphics
 - Multiplayer
 - Matchmaking
@@ -274,7 +278,7 @@ Therefore, seeing existing betting platforms in Pakistan is not sufficient evide
 
 The specific legal question for this project is:
 
-> Can a peer-to-peer online snooker platform offering real-money/crypto wagering legally operate from Pakistan and accept Pakistani users?
+> Can a peer-to-peer online chess platform offering real-money/crypto wagering legally operate from Pakistan and accept Pakistani users?
 
 That requires current, jurisdiction-specific legal review.
 
@@ -417,7 +421,7 @@ This allows development and testing of:
 - Rankings
 - Leaderboards
 - Game economy
-- Snooker physics
+- Chess rules engine
 - Admin systems
 
 without immediately activating real-money wagering.
@@ -428,57 +432,50 @@ without immediately activating real-money wagering.
 
 The user wants the game to feel professional and high quality.
 
-The snooker experience should include:
+The chess experience should include:
 
-- High-quality snooker table
-- Realistic table proportions
-- Professional-looking cloth and cushions
-- Realistic balls
-- Cue
-- Lighting/shadows
-- Smooth animations
-- Realistic ball movement
-- Collision physics
-- Cushion physics
-- Pocket detection
-- Ball friction
-- Cue power
-- Cue aiming
-- Spin/English
-- Camera movement
+- A clear, attractive board with readable pieces
+- Board flipped so each player's pieces are at the bottom
+- Click-to-move and drag-and-drop
+- Legal-move hints, last-move and check highlights
+- Promotion picker
+- Live chess clocks for both players
+- Move list in standard notation
+- Captured pieces / material balance
+- Move and capture sounds
 - Smooth online synchronization
-- Responsive game UI
+- Responsive game UI from phone to desktop
 
-The game should prioritize smooth gameplay rather than only static graphics.
+The game should prioritize smooth, responsive play rather than only static graphics.
 
 ---
 
-# 12. Snooker Rules
+# 12. Chess Rules
 
-The game should implement proper snooker rules.
+The game should implement the full rules of chess.
 
-Potential features:
+Features:
 
-- 15 red balls
-- Six colours
-- Cue ball
-- Breaking/opening play
-- Red/colour sequence
-- Fouls
-- Free ball rules where applicable
-- Snookers
-- Points
-- Break calculation
-- Turn changes
-- End of frame
-- Final colours
-- Frame winner
+- Standard piece movement
+- Check and checkmate
+- Castling (not out of, through or into check)
+- En passant
+- Pawn promotion
+- Stalemate
+- Threefold repetition
+- Fifty-move rule
+- Insufficient material
+- Loss on time
+- Resignation
+- Game winner
 - Match winner
+- Best-of-1
 - Best-of-3
 - Best-of-5
-- Other configurable match formats
+- Colours alternating between games
+- Drawn games replayed so a staked match always has a winner
 
-The rules engine should run on the server where possible so players cannot modify the outcome.
+The rules engine must run on the server so players cannot modify the outcome.
 
 ---
 
@@ -488,9 +485,10 @@ This is one of the most important technical decisions.
 
 The browser should not be trusted to determine:
 
-- Whether a shot is valid
-- Whether a ball entered a pocket
-- Whether a foul happened
+- Whether a move is legal
+- Whose turn it is
+- How much time each player has left
+- Whether the game ended (checkmate, stalemate, draw, time)
 - The score
 - The winner
 - The prize
@@ -500,11 +498,11 @@ Instead:
 ```text
 Player Browser
       ↓
-Shot Input
+Move Input
       ↓
 Game Server
       ↓
-Physics / Rules Validation
+Rules Validation + Clocks
       ↓
 Authoritative Game State
       ↓
@@ -551,12 +549,11 @@ The game server maintains:
 - Match ID
 - Player IDs
 - Current turn
-- Ball positions
-- Ball velocities
-- Current score
-- Frame state
-- Fouls
-- Match timer
+- Board position (FEN)
+- Move history
+- Games won
+- Current game state
+- Both players' clocks
 - Connection state
 - Winner
 - Match status
@@ -573,12 +570,9 @@ Possible technologies:
 - CSS
 - JavaScript / TypeScript
 - WebGL
-- Phaser.js or another browser game framework
 - Responsive UI
 
-For a polished 2D/2.5D snooker experience, a browser game engine can make development easier.
-
-For more advanced graphics, a WebGL-based 3D engine could be considered.
+A chess board does not need a game engine: a DOM/CSS board is fast, accessible and works on every device.
 
 ## Backend
 
@@ -1061,14 +1055,15 @@ Because the game has monetary value, anti-cheat is critical.
 
 Potential measures:
 
-- Server-authoritative physics
+- Server-authoritative move validation
+- Server-authoritative clocks
 - Server-authoritative scoring
 - Input validation
 - Rate limiting
 - Impossible-action detection
 - Tampered client detection
 - Match replay logs
-- Shot history
+- Move history
 - Suspicious timing detection
 - Multi-account detection
 - Device/IP risk signals
@@ -1087,12 +1082,11 @@ For every match, the server can store:
 - Player IDs
 - Start time
 - End time
-- Initial state
-- Shot events
-- Cue parameters
-- Ball states
-- Fouls
-- Scores
+- Initial position
+- Every move (notation and resulting position)
+- Clock times
+- Game results
+- Games won
 - Turn changes
 - Disconnects
 - Final result
@@ -1251,8 +1245,8 @@ The platform could have:
 - Weekly ranking
 - Monthly ranking
 - Win/loss record
-- Total frames
-- Highest break
+- Total games
+- Draws
 - Total matches
 - Winning percentage
 
@@ -1272,7 +1266,7 @@ Matches Played
 Wins
 Losses
 Win Rate
-Highest Break
+Games Won
 Current Rating
 Ranking
 Recent Matches
@@ -1317,20 +1311,17 @@ Build:
 
 No real money initially.
 
-## Phase 2 — Snooker Engine
+## Phase 2 — Chess Engine
 
 Build:
 
-- Table
-- Balls
-- Cue
-- Physics
-- Aiming
-- Power
-- Spin
-- Fouls
-- Scoring
-- Frame system
+- Board and pieces
+- Legal move generation
+- Check, checkmate, stalemate
+- Castling, en passant, promotion
+- Automatic draws
+- Clocks
+- Game and match system
 
 ## Phase 3 — Multiplayer
 
@@ -1481,18 +1472,16 @@ The first working version should focus on:
 - Profile
 - Lobby
 - Find opponent
-- 1v1 snooker
+- 1v1 chess
 - Match result
 - Match history
 
 ### Game
 
-- Realistic table
-- Balls
-- Cue
-- Physics
-- Scoring
-- Fouls
+- Board and pieces
+- Legal moves
+- Clocks
+- Game results
 - Turn system
 
 ### Backend
@@ -1569,7 +1558,7 @@ This should be decided before connecting production deposits and withdrawals.
 
 The intended product remains:
 
-> A high-quality online multiplayer snooker website with accounts, real-time matches, a wallet, cryptocurrency deposits/withdrawals, peer-to-peer paid matches, automatic winner settlement, and platform commission.
+> A high-quality online multiplayer chess website with accounts, real-time matches, a wallet, cryptocurrency deposits/withdrawals, peer-to-peer paid matches, automatic winner settlement, and platform commission.
 
 The technical plan should be built around:
 
@@ -1583,14 +1572,14 @@ The real-money component should not be treated as simply another UI feature. It 
 
 ## Main product
 
-A professional online multiplayer snooker platform.
+A professional online multiplayer chess platform.
 
 ## Main gameplay
 
 ```text
 Player A
    ↕
-Online Snooker Match
+Online Chess Match
    ↕
 Player B
 ```
@@ -1606,7 +1595,7 @@ Match Entry
       ↓
 Funds Locked
       ↓
-Snooker Match
+Chess Match
       ↓
 Server Determines Winner
       ↓
@@ -1627,7 +1616,7 @@ Winner Prize
 
 ## Main technical challenges
 
-1. Realistic snooker physics
+1. A correct, fast chess rules engine (legal moves, draws, clocks)
 2. Smooth real-time multiplayer
 3. Server-authoritative game state
 4. Anti-cheat
@@ -1682,4 +1671,4 @@ This allows the game to be developed and tested independently while keeping the 
 
 ## End Goal
 
-A polished, scalable and secure online snooker platform that can support real-time competitive gameplay and, where legally authorized, real-money cryptocurrency matches with automated settlement and a configurable platform commission.
+A polished, scalable and secure online chess platform that can support real-time competitive gameplay and, where legally authorized, real-money cryptocurrency matches with automated settlement and a configurable platform commission.

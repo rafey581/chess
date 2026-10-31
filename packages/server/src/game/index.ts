@@ -203,7 +203,7 @@ export function createGameServer(app: FastifyInstance, httpServer: HttpServer): 
     persist,
     log: (msg: string) => app.log.debug(msg),
     onFrameEnd: async (id: string, frameWinner: number | null, scores: { player0: number; player1: number }) => {
-      app.log.info({ id, frameWinner, scores }, 'frame ended')
+      app.log.info({ id, frameWinner, scores }, 'game ended')
       void id
     },
     onMatchEnd: async (id: string, matchWinner: number, reason: string) => {

@@ -84,7 +84,7 @@ Create `/etc/systemd/system/snooker.service`:
 
 ```ini
 [Unit]
-Description=Snooker Game Server
+Description=Chess Game Server
 After=network.target docker.service
 
 [Service]
@@ -211,16 +211,6 @@ stability):** serve the client build from EC2 nginx instead:
 root /home/ubuntu/snooker/packages/client/dist;
 location / { try_files $uri /index.html; }
 # /api and /socket.io already proxied above — same-origin, no CORS, no Vercel needed
-
-# The table model (snooker_table.glb) is a 2.9 MB binary asset. nginx's default
-# mime.types has no glb entry, so without this it is served as octet-stream and
-# the browser refuses to parse it; gzip also cuts the transfer to ~2 MB. The
-# `types` map is scoped to this location, so it does not affect any other asset.
-location ~* \.glb$ {
-  types { model/gltf-binary glb; }
-  gzip on;
-  gzip_types model/gltf-binary;
-}
 ```
 
 If you go this route, you can keep Vercel as a preview/staging host only.
