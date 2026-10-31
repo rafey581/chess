@@ -629,7 +629,7 @@ export function renderCasinoHome(bridge: LobbyBridge, actions: CasinoHomeActions
   aside.appendChild(recent)
 
   const card = el('section', 'cx-panel cx-practice-card')
-  card.append(el('h3', 'cx-panel__title', 'Warm up first?'), el('p', 'cx-recent__empty', 'A frame against the computer costs nothing and sharpens the eye.'))
+  card.append(el('h3', 'cx-panel__title', 'Warm up first?'), el('p', 'cx-recent__empty', 'A game against the computer costs nothing and sharpens your tactics.'))
   const warm = el('button', 'cx-btn cx-btn--gold', 'Practice vs AI') as HTMLButtonElement
   warm.type = 'button'
   warm.onclick = actions.practice

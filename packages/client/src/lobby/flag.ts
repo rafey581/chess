@@ -18,7 +18,7 @@ export const USE_LOADING_SCREEN = true
 export const USE_SPECTATOR_CAM = true
 
 /**
- * The procedural snooker sound effects (`src/sfx/`): cue, ball, cushion, pocket and roll,
+ * The procedural sound effects (`src/sfx/`), used by the lobby for UI clicks; originally cue, ball, cushion, pocket and roll,
  * generated in code and driven by the shot replay.
  * `false` keeps exactly the audio the game had before: the old blips, and nothing new.
  */

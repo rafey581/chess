@@ -68,10 +68,10 @@ export function renderHome(bridge: LobbyBridge, actions: HomeActions): HTMLEleme
 
   const hero = el('button', 'gl-hero') as HTMLButtonElement
   hero.type = 'button'
-  hero.setAttribute('aria-label', 'Play snooker — choose your opponent')
+  hero.setAttribute('aria-label', 'Play chess — choose your opponent')
   const heroImg = document.createElement('img')
   heroImg.className = 'gl-hero__img'
-  heroImg.src = '/snooker-match.jpg'
+  heroImg.src = '/chess-match.jpg'
   heroImg.alt = ''
   heroImg.decoding = 'async'
   const body = el('div', 'gl-hero__body')

@@ -1,4 +1,6 @@
-import { MAX_CUE_SPEED, TABLE_LENGTH } from '@snooker/shared'
+/** Reference speed and length the sound curves were tuned against (mm/s, mm). */
+const MAX_CUE_SPEED = 9000
+const TABLE_LENGTH = 3569
 
 /**
  * SFX_CONFIG — every number the sound system can be tuned by, in one object.

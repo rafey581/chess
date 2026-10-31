@@ -29,14 +29,14 @@ function minutesLeft(): number {
 }
 
 function subjectFor(purpose: OtpPurpose): string {
-  return purpose === 'SIGNUP' ? 'Your Snooker Arena verification code' : 'Your Snooker Arena password reset code'
+  return purpose === 'SIGNUP' ? 'Your Chess Arena verification code' : 'Your Chess Arena password reset code'
 }
 
 function bodyFor(code: string, purpose: OtpPurpose): string {
   const lead =
     purpose === 'SIGNUP'
-      ? 'Use this code to finish creating your Snooker Arena account'
-      : 'Use this code to reset your Snooker Arena password'
+      ? 'Use this code to finish creating your Chess Arena account'
+      : 'Use this code to reset your Chess Arena password'
   return `${lead}: ${code}\n\nIt expires in ${minutesLeft()} minute(s). If you did not request this, you can ignore this message.`
 }
 

@@ -19,7 +19,7 @@ export const DEVICE_ID_PATTERN = /^(android|ios|web):[A-Za-z0-9_-]{6,120}$/
 
 export class DeviceLimitError extends Error {
   constructor() {
-    super('This phone already has a Snooker Stake account. Please log in with that account instead.')
+    super('This phone already has a Chess Stake account. Please log in with that account instead.')
   }
 }
 

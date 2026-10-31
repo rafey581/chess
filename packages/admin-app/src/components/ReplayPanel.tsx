@@ -3,7 +3,7 @@ import { StyleSheet, Text, View } from 'react-native'
 import { colors, spacing } from '@/theme'
 import { Button, Card } from './ui'
 import { ReplayTable, ReplayTablePlaceholder } from './ReplayTable'
-import { collectShots, eventLabel, frameAt, type ReplayEvent } from '@/lib/replay'
+import { collectMoves, eventLabel, stepAt, type ReplayEvent } from '@/lib/replay'
 
 const PLAY_INTERVAL_MS = 650
 const MAX_WINDOW_EVENTS = 12
@@ -15,14 +15,14 @@ const MAX_WINDOW_EVENTS = 12
  * native dependency. Step and play controls cover the job, and the event list
  * shows only the window the current stroke covers rather than thousands of rows.
  */
-export function ReplayPanel({ events, reds = 15 }: { events: ReplayEvent[]; reds?: number }): ReactNode {
-  const shots = useMemo(() => collectShots(events), [events])
+export function ReplayPanel({ events }: { events: ReplayEvent[] }): ReactNode {
+  const moves = useMemo(() => collectMoves(events), [events])
   const [step, setStep] = useState(0)
   const [playing, setPlaying] = useState(false)
   const timer = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  const total = Math.max(shots.length, 1)
-  const snapshot = useMemo(() => frameAt(events, step, reds), [events, step, reds])
+  const total = moves.length + 1
+  const snapshot = useMemo(() => stepAt(events, step), [events, step])
 
   useEffect(() => {
     if (!playing) return
@@ -44,23 +44,23 @@ export function ReplayPanel({ events, reds = 15 }: { events: ReplayEvent[]; reds
   const atEnd = step >= total - 1
   const jump = (next: number): void => setStep(Math.min(Math.max(0, next), total - 1))
 
-  const windowEvents = snapshot
+  const windowEvents = snapshot.move
     ? events.filter((event) => event.seq >= snapshot.startSeq && event.seq <= snapshot.endSeq).slice(0, MAX_WINDOW_EVENTS)
     : []
 
   return (
     <View style={styles.wrap}>
-      {snapshot ? (
-        <ReplayTable frame={snapshot.frame} />
+      {moves.length > 0 ? (
+        <ReplayTable board={snapshot.board} lastMove={snapshot.lastMove} />
       ) : (
-        <ReplayTablePlaceholder label="No strokes were recorded for this match." />
+        <ReplayTablePlaceholder label="No moves were recorded for this match." />
       )}
 
       <Card style={styles.controls}>
         <Text style={styles.status}>
-          {snapshot
-            ? `stroke ${snapshot.index + 1}/${snapshot.total}  -  seq ${snapshot.startSeq}-${snapshot.endSeq === Number.MAX_SAFE_INTEGER ? 'end' : snapshot.endSeq}`
-            : `stroke 0/${total}`}
+          {snapshot.move
+            ? `game ${snapshot.game} - move ${snapshot.index}/${snapshot.total - 1}: ${snapshot.move.san}`
+            : `start position - ${snapshot.total - 1} moves`}
         </Text>
         <View style={styles.buttonRow}>
           <Button label="|<" onPress={() => jump(0)} style={styles.stepButton} />
@@ -78,13 +78,13 @@ export function ReplayPanel({ events, reds = 15 }: { events: ReplayEvent[]; reds
           <Button label=">|" onPress={() => jump(total - 1)} style={styles.stepButton} />
         </View>
         <Text style={styles.summary}>
-          {events.length} events - {shots.length} strokes
+          {events.length} events - {moves.length} moves
         </Text>
       </Card>
 
       {windowEvents.length > 0 ? (
         <Card>
-          <Text style={styles.windowTitle}>This stroke</Text>
+          <Text style={styles.windowTitle}>This move</Text>
           {windowEvents.map((event) => (
             <View key={event.seq} style={styles.eventRow}>
               <Text style={styles.eventSeq}>{event.seq}</Text>

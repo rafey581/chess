@@ -1,15 +1,12 @@
 /**
- * Match replay: walk the recorded events and reconstruct the table after each
- * stroke.
+ * Rebuilds a chess match from its recorded events for the admin replay.
  *
- * The engine lives in `@snooker/shared` and is the exact one the game server
- * played with, so a replay is not an approximation - it is the same simulation
- * run forwards. Everything here is pure; the React component that draws the
- * result lives in `components/ReplayTable.tsx`.
+ * Every MOVE event carries the position after it (FEN), so a step is simply "the
+ * position after move N" - nothing has to be re-simulated, and the replay shows
+ * exactly what the server accepted.
  */
-import { createFrame, applyStroke } from '@snooker/shared'
-import type { FrameState } from '@snooker/shared'
-import { BALL_IDS, COLOR_NAMES } from '@snooker/shared'
+import { parseFen, START_FEN } from '@snooker/shared'
+import type { Piece } from '@snooker/shared'
 
 export interface ReplayEvent {
   seq: number
@@ -17,112 +14,89 @@ export interface ReplayEvent {
   data: unknown
 }
 
-export interface ShotPlayed {
+export interface MovePlayed {
   seq: number
-  byIndex: number
-  shot: { aimAngle: number; power: number; spin: { x: number; y: number }; timestamp?: number; cuePos?: { x: number; y: number } }
+  /** 1-based game number within the match. */
+  game: number
+  san: string
+  from: string
+  to: string
+  fen: string
+  bySeat: number
 }
 
-export interface FrameSnapshot {
-  frame: FrameState
-  /** Event sequence this stroke started at, for highlighting the log. */
-  startSeq: number
-  /** Sequence the stroke ended before (next shot, a frame end, or the end). */
-  endSeq: number
+export interface ReplayStep {
   index: number
   total: number
+  game: number
+  board: Array<Piece | null>
+  lastMove: { from: string; to: string } | null
+  move: MovePlayed | null
+  startSeq: number
+  endSeq: number
 }
 
-/** Every SHOT event with the player and shot it carries. */
-export function collectShots(events: ReplayEvent[]): ShotPlayed[] {
-  const shots: ShotPlayed[] = []
-  for (const event of events) {
-    if (event.type !== 'SHOT') continue
-    const data = event.data as { shot?: ShotPlayed['shot']; byIndex?: number } | null
-    if (!data?.shot) continue
-    shots.push({ seq: event.seq, byIndex: data.byIndex ?? 0, shot: data.shot })
+/** Every recorded move, numbered by the game it belongs to. */
+export function collectMoves(events: ReplayEvent[]): MovePlayed[] {
+  const moves: MovePlayed[] = []
+  let game = 1
+  for (const event of [...events].sort((a, b) => a.seq - b.seq)) {
+    const d = (event.data ?? {}) as Partial<MovePlayed>
+    if (event.type === 'MOVE' && typeof d.fen === 'string' && typeof d.san === 'string') {
+      moves.push({ seq: event.seq, game, san: d.san, from: d.from ?? '', to: d.to ?? '', fen: d.fen, bySeat: Number(d.bySeat ?? 0) })
+    } else if (event.type === 'FRAME_END') {
+      game += 1
+    }
   }
-  return shots
-}
-
-export function ballColor(id: number): string {
-  if (id === BALL_IDS.CUE) return '#f0e6d6'
-  if (id >= BALL_IDS.RED_MIN && id <= BALL_IDS.RED_MAX) return '#c0392b'
-  const name = COLOR_NAMES[id]
-  switch (name) {
-    case 'yellow':
-      return '#f1c40f'
-    case 'green':
-      return '#27ae60'
-    case 'brown':
-      return '#8d5524'
-    case 'blue':
-      return '#2980b9'
-    case 'pink':
-      return '#e84393'
-    case 'black':
-      return '#1f1f1f'
-    default:
-      return '#888'
-  }
+  return moves
 }
 
 /**
- * The table state after `step` strokes (0-based), plus the event-sequence window
- * that stroke covers. A frame boundary resets the table with the loser breaking,
- * matching how a real frame re-racks. `reds` is the rack the match was played with
- * (Match.reds); matches from before that was recorded were all 15-red.
+ * The board at step `step`: step 0 is the starting position of game 1, step N the
+ * position after the N-th recorded move.
  */
-export function frameAt(events: ReplayEvent[], step: number, reds = 15): FrameSnapshot | null {
-  const shots = collectShots(events)
-  if (shots.length === 0) return null
-  const frames: FrameState[] = []
-  const seqBounds: Array<{ start: number; end: number }> = []
-  let breakIndex = 0
-  let frame = createFrame(breakIndex, reds)
-  for (const shot of shots) {
-    const before = shot.seq
-    applyStroke(frame, frame.turnIndex, shot.shot)
-    frames.push(frame)
-    const nextEvent = events.find((e) => e.seq > shot.seq && (e.type === 'SHOT' || e.type === 'FRAME_END'))
-    if (nextEvent?.type === 'FRAME_END') {
-      const frameEndData = nextEvent.data as { winnerIndex?: number; winnerSeat?: number }
-      const winnerIndex = frameEndData.winnerIndex ?? frameEndData.winnerSeat
-      breakIndex = winnerIndex === 0 || winnerIndex === 1 ? 1 - winnerIndex : breakIndex
-      frame = createFrame(breakIndex, reds)
-    }
-    seqBounds.push({ start: before, end: nextEvent ? nextEvent.seq : Number.MAX_SAFE_INTEGER })
+export function stepAt(events: ReplayEvent[], step: number): ReplayStep {
+  const moves = collectMoves(events)
+  const total = moves.length + 1
+  const index = Math.min(Math.max(0, step), total - 1)
+  const move = index > 0 ? moves[index - 1]! : null
+  const next = moves[index]
+  return {
+    index,
+    total,
+    game: move?.game ?? 1,
+    board: parseFen(move?.fen ?? START_FEN).board,
+    lastMove: move ? { from: move.from, to: move.to } : null,
+    move,
+    startSeq: move?.seq ?? 0,
+    endSeq: next ? next.seq - 1 : Number.MAX_SAFE_INTEGER
   }
-  const clamped = Math.min(Math.max(0, step), frames.length - 1)
-  const target = frames[clamped]
-  const bounds = seqBounds[clamped]
-  if (!target || !bounds) return null
-  return { frame: target, startSeq: bounds.start, endSeq: bounds.end, index: clamped, total: frames.length }
 }
 
-const BALL_NAMES: Record<number, string> = { [BALL_IDS.CUE]: 'cue', ...COLOR_NAMES }
-
-/** Names any ball, including the fifteen reds, which are not in COLOR_NAMES. */
-export function ballName(id: number): string {
-  if (id === BALL_IDS.CUE) return 'cue'
-  if (id >= BALL_IDS.RED_MIN && id <= BALL_IDS.RED_MAX) return 'red'
-  return BALL_NAMES[id] ?? String(id)
+const RESULT_TEXT: Record<string, string> = {
+  CHECKMATE: 'checkmate',
+  STALEMATE: 'stalemate',
+  DRAW_FIFTY_MOVE: 'draw (fifty-move rule)',
+  DRAW_REPETITION: 'draw (repetition)',
+  DRAW_MATERIAL: 'draw (insufficient material)',
+  TIMEOUT: 'lost on time',
+  RESIGN: 'resignation'
 }
 
-/** One readable line for an event in the replay log. */
+/** One line of the event log, readable on its own. */
 export function eventLabel(event: ReplayEvent): string {
-  const data = event.data as Record<string, unknown> | null
-  if (event.type === 'SHOT' && data?.shot) {
-    const shot = data.shot as { aimAngle?: number; power?: number }
-    return `player ${String(data.byIndex)} aims ${Number(shot.aimAngle ?? 0).toFixed(2)}`
+  const d = (event.data ?? {}) as Record<string, unknown>
+  const seat = (v: unknown) => (typeof v === 'number' ? `seat ${v}` : 'nobody')
+  switch (event.type) {
+    case 'MOVE':
+      return `${seat(d.bySeat)} played ${String(d.san ?? '?')}`
+    case 'FRAME_END': {
+      const how = RESULT_TEXT[String(d.result)] ?? String(d.result ?? 'game over')
+      return d.winnerSeat === null || d.winnerSeat === undefined ? `game drawn: ${how}` : `game won by ${seat(d.winnerSeat)}: ${how}`
+    }
+    case 'MATCH_END':
+      return `match won by ${seat(d.winnerSeat)} (${String(d.reason ?? '')})`
+    default:
+      return event.type.toLowerCase().replace(/_/g, ' ')
   }
-  if (event.type === 'FOUL') return `player ${String(data?.byIndex ?? data?.bySeat)} foul (+${String(data?.penalty)})`
-  if (event.type === 'BALL_POTTED') {
-    const ballId = data?.ballId as number | undefined
-    return `pot ${ballId !== undefined ? ballName(ballId) : '?'}`
-  }
-  if (event.type === 'TURN_CHANGE') return `turn -> player ${String(data?.turnSeat ?? data?.turnIndex)}`
-  if (event.type === 'FRAME_END') return `frame won by player ${String(data?.winnerIndex)}`
-  if (event.type === 'MATCH_END') return `match won by player ${String(data?.winnerIndex)} (${String(data?.reason)})`
-  return `${event.type} ${JSON.stringify(event.data ?? {})}`
 }

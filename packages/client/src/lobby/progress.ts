@@ -61,7 +61,7 @@ export function xpBar(percent: number): HTMLElement {
 const BADGE_ICONS: Record<string, string> = {
   star: '<path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/>',
   medal: '<circle cx="12" cy="14.5" r="5.5"/><path d="M8.5 3.5 12 9l3.5-5.5"/><path d="M12 12v5"/>',
-  cue: '<circle cx="7" cy="17" r="3.2"/><path d="M9.5 14.5 20 4"/>',
+  pawn: '<circle cx="12" cy="7" r="2.8"/><path d="M9.5 10.5h5l-1 5h-3z"/><path d="M7 20h10l-1.5-4.5h-7z"/>',
   flame: '<path d="M12 21c-3.9 0-6.5-2.6-6.5-6.2 0-3.3 2.4-5.4 3.6-8.8 1.8 1.6 2.4 3.4 2.4 4.9 1-1 1.6-2.4 1.6-4 2.6 2 5.4 4.8 5.4 8 0 3.5-2.6 6.1-6.5 6.1z"/>',
   robot: '<rect x="5" y="8" width="14" height="11" rx="3"/><path d="M12 4v4"/><circle cx="9.5" cy="13" r="1.2"/><circle cx="14.5" cy="13" r="1.2"/>',
   level: '<path d="M5 19 12 5l7 14"/><path d="M8.5 13h7"/>',

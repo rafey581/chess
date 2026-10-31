@@ -8,14 +8,7 @@ const RECORD_KEYS = [
   ['Completed', 'matches'],
   ['Wins', 'wins'],
   ['Losses', 'losses'],
-  ['Win rate', 'winRate'],
-  ['Shots taken', null],
-  ['Balls potted', null],
-  ['Pot points', null],
-  ['Foul points received', null],
-  ['Highest break', 'highestBreak'],
-  ['Frames won', null],
-  ['Fouls', null]
+  ['Win rate', 'winRate']
 ] as const
 
 export interface StatsActions {

@@ -1,69 +1,49 @@
 import { describe, expect, it } from 'vitest'
-import { ballColor, collectShots, eventLabel, frameAt, type ReplayEvent } from './replay'
-
-const shot = { aimAngle: 0, power: 0.2, spin: { x: 0, y: 0 } }
+import { collectMoves, eventLabel, stepAt, type ReplayEvent } from './replay'
 
 const events: ReplayEvent[] = [
-  { seq: 1, type: 'SHOT', data: { byIndex: 0, shot } },
-  { seq: 2, type: 'BALL_POTTED', data: { ballId: 1 } },
-  { seq: 3, type: 'FOUL', data: { byIndex: 1, penalty: 4 } },
-  { seq: 4, type: 'SHOT', data: { byIndex: 1, shot } }
+  { seq: 1, type: 'MOVE', data: { san: 'f3', from: 'f2', to: 'f3', bySeat: 0, fen: 'rnbqkbnr/pppppppp/8/8/8/5P2/PPPPP1PP/RNBQKBNR b KQkq - 0 1' } },
+  { seq: 2, type: 'MOVE', data: { san: 'e5', from: 'e7', to: 'e5', bySeat: 1, fen: 'rnbqkbnr/pppp1ppp/8/4p3/8/5P2/PPPPP1PP/RNBQKBNR w KQkq - 0 2' } },
+  { seq: 3, type: 'FRAME_END', data: { winnerSeat: 1, result: 'TIMEOUT' } },
+  { seq: 4, type: 'MOVE', data: { san: 'e4', from: 'e2', to: 'e4', bySeat: 1, fen: 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1' } },
+  { seq: 5, type: 'MATCH_END', data: { winnerSeat: 1, reason: 'games' } }
 ]
 
-describe('collectShots', () => {
-  it('keeps only SHOT events that carry a shot', () => {
-    const shots = collectShots(events)
-    expect(shots).toHaveLength(2)
-    expect(shots[0]).toMatchObject({ seq: 1, byIndex: 0 })
-    expect(shots[1]).toMatchObject({ seq: 4, byIndex: 1 })
+describe('collectMoves', () => {
+  it('keeps the moves and numbers the games', () => {
+    const moves = collectMoves(events)
+    expect(moves.map((m) => m.san)).toEqual(['f3', 'e5', 'e4'])
+    expect(moves.map((m) => m.game)).toEqual([1, 1, 2])
   })
-
-  it('ignores a SHOT event with no payload', () => {
-    expect(collectShots([{ seq: 1, type: 'SHOT', data: {} }])).toHaveLength(0)
-  })
-
   it('handles an empty log', () => {
-    expect(collectShots([])).toHaveLength(0)
+    expect(collectMoves([])).toHaveLength(0)
   })
 })
 
-describe('ballColor', () => {
-  it('uses the cue colour for the cue ball', () => {
-    expect(ballColor(0)).toBe('#f0e6d6')
+describe('stepAt', () => {
+  it('starts from the initial position', () => {
+    const step = stepAt(events, 0)
+    expect(step.total).toBe(4)
+    expect(step.board[4]).toBe('K')
+    expect(step.lastMove).toBeNull()
   })
-
-  it('falls back to a neutral colour for an unknown id', () => {
-    expect(ballColor(9999)).toBe('#888')
+  it('shows the position after a move', () => {
+    const step = stepAt(events, 2)
+    expect(step.board[36]).toBe('p')
+    expect(step.lastMove).toEqual({ from: 'e7', to: 'e5' })
+    expect(step.startSeq).toBe(2)
+    expect(step.endSeq).toBe(3)
   })
-})
-
-describe('frameAt', () => {
-  it('returns null when there is nothing to replay', () => {
-    expect(frameAt([], 0)).toBeNull()
-    expect(frameAt([{ seq: 1, type: 'BALL_POTTED', data: {} }], 0)).toBeNull()
-  })
-
-  it('reports the stroke window and clamps the step to the last stroke', () => {
-    const first = frameAt(events, 0)
-    expect(first?.index).toBe(0)
-    expect(first?.total).toBe(2)
-    expect(first?.startSeq).toBe(1)
-    expect(first?.endSeq).toBe(4)
-
-    const last = frameAt(events, 99)
-    expect(last?.index).toBe(1)
-    expect(last?.endSeq).toBe(Number.MAX_SAFE_INTEGER)
+  it('clamps out-of-range steps', () => {
+    expect(stepAt(events, 99).index).toBe(3)
+    expect(stepAt(events, -5).index).toBe(0)
   })
 })
 
 describe('eventLabel', () => {
-  it('summarises the events an admin cares about', () => {
-    expect(eventLabel({ seq: 1, type: 'FOUL', data: { byIndex: 1, penalty: 4 } })).toBe('player 1 foul (+4)')
-    expect(eventLabel({ seq: 2, type: 'BALL_POTTED', data: { ballId: 1 } })).toBe('pot red')
-    expect(eventLabel({ seq: 3, type: 'FRAME_END', data: { winnerIndex: 0 } })).toBe('frame won by player 0')
-  })
-
-  it('falls back to a raw dump for unknown events', () => {
-    expect(eventLabel({ seq: 1, type: 'MYSTERY', data: { a: 1 } })).toBe('MYSTERY {"a":1}')
+  it('describes each event type', () => {
+    expect(eventLabel(events[0]!)).toBe('seat 0 played f3')
+    expect(eventLabel(events[2]!)).toBe('game won by seat 1: lost on time')
+    expect(eventLabel(events[4]!)).toBe('match won by seat 1 (games)')
   })
 })

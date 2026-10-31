@@ -1,8 +1,13 @@
-const MAX_TIMESTAMP_DRIFT_MS = 15000
-const DUPLICATE_WINDOW_MS = 3000
-const SPIN_LIMIT = 1.5
+/**
+ * Flood and shape checks for incoming chess moves.
+ *
+ * The room is the authority on legality; this only refuses traffic that is too fast or
+ * not shaped like a move at all, before it reaches the rules engine.
+ */
+import type { ChessMoveInput } from '@snooker/shared'
 
-import type { ShotInputDto } from './room.js'
+const SQUARE = /^[a-h][1-8]$/
+const PROMOTIONS = new Set(['q', 'r', 'b', 'n'])
 
 interface Bucket {
   tokens: number
@@ -29,69 +34,27 @@ class BucketLimiter {
   }
 }
 
-function fingerprint(input: ShotInputDto): string {
-  const s = input.spin ?? { x: 0, y: 0 }
-  const c = input.cuePos
-  const cp = c ? `,${c.x},${c.y}` : ''
-  return `${input.aimAngle},${input.power},${s.x},${s.y}${cp}`
-}
+type MoveCheck = { ok: true; move: ChessMoveInput } | { ok: false; reason: string }
 
-type ShotEnforcementResult = { ok: true } | { ok: false; reason: string }
-
-export class ShotEnforcement {
-  private perSocket = new BucketLimiter(20, 15)
-  private perUser = new BucketLimiter(40, 30)
-  private lastAccepted = new Map<string, { sig: string; at: number }>()
+export class MoveEnforcement {
+  private perSocket = new BucketLimiter(20, 10)
+  private perUser = new BucketLimiter(40, 20)
 
   take(socketId: string, userId: string): boolean {
     return this.perSocket.take(socketId) && this.perUser.take(userId)
   }
 
-  validate(input: unknown): ShotEnforcementResult {
+  validate(input: unknown): MoveCheck {
     if (typeof input !== 'object' || input === null) return { ok: false, reason: 'bad_input' }
-    const shot = input as { aimAngle?: unknown; power?: unknown; spin?: unknown; timestamp?: unknown; cuePos?: unknown }
-
-    if (typeof shot.aimAngle !== 'number' || !Number.isFinite(shot.aimAngle)) return { ok: false, reason: 'bad_aim_angle' }
-
-    if (typeof shot.power !== 'number' || !Number.isFinite(shot.power) || shot.power < 0 || shot.power > 1) {
-      return { ok: false, reason: 'bad_power' }
+    const m = input as { from?: unknown; to?: unknown; promotion?: unknown }
+    if (typeof m.from !== 'string' || !SQUARE.test(m.from)) return { ok: false, reason: 'bad_square' }
+    if (typeof m.to !== 'string' || !SQUARE.test(m.to)) return { ok: false, reason: 'bad_square' }
+    if (m.promotion !== undefined && (typeof m.promotion !== 'string' || !PROMOTIONS.has(m.promotion))) {
+      return { ok: false, reason: 'bad_promotion' }
     }
-
-    if (typeof shot.spin !== 'object' || shot.spin === null) return { ok: false, reason: 'bad_spin' }
-    const spin = shot.spin as { x?: unknown; y?: unknown }
-    if (typeof spin.x !== 'number' || typeof spin.y !== 'number' || !Number.isFinite(spin.x) || !Number.isFinite(spin.y)) {
-      return { ok: false, reason: 'bad_spin' }
+    return {
+      ok: true,
+      move: { from: m.from, to: m.to, ...(m.promotion ? { promotion: m.promotion as ChessMoveInput['promotion'] } : {}) }
     }
-    if (Math.abs(spin.x) > SPIN_LIMIT || Math.abs(spin.y) > SPIN_LIMIT) return { ok: false, reason: 'bad_spin' }
-
-    if (shot.timestamp !== undefined) {
-      if (typeof shot.timestamp !== 'number' || !Number.isFinite(shot.timestamp)) return { ok: false, reason: 'bad_timestamp' }
-      if (shot.timestamp > 0 && Math.abs(Date.now() - shot.timestamp) > MAX_TIMESTAMP_DRIFT_MS) {
-        return { ok: false, reason: 'bad_timestamp' }
-      }
-    }
-
-    if (shot.cuePos !== undefined) {
-      if (typeof shot.cuePos !== 'object' || shot.cuePos === null) return { ok: false, reason: 'bad_cue_pos' }
-      const pos = shot.cuePos as { x?: unknown; y?: unknown }
-      if (typeof pos.x !== 'number' || typeof pos.y !== 'number' || !Number.isFinite(pos.x) || !Number.isFinite(pos.y)) {
-        return { ok: false, reason: 'bad_cue_pos' }
-      }
-    }
-
-    return { ok: true }
-  }
-
-  isReplay(socketId: string, input: unknown): boolean {
-    if (typeof input !== 'object' || input === null) return false
-    const sig = fingerprint(input as ShotInputDto)
-    const last = this.lastAccepted.get(socketId)
-    if (!last) return false
-    return last.sig === sig && Date.now() - last.at <= DUPLICATE_WINDOW_MS
-  }
-
-  recordAccepted(socketId: string, input: unknown): void {
-    if (typeof input !== 'object' || input === null) return
-    this.lastAccepted.set(socketId, { sig: fingerprint(input as ShotInputDto), at: Date.now() })
   }
 }

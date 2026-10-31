@@ -30,6 +30,7 @@ const RESERVED = new Set([
   'support',
   'official',
   'snooker',
+  'chess',
   'arena',
   'platform',
   'bot',

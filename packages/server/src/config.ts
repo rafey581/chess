@@ -185,7 +185,7 @@ const envSchema = z.object({
   SMTP_SECURE: boolFlag(false),
   SMTP_USER: z.string().default(''),
   SMTP_PASS: z.string().default(''),
-  SMTP_FROM: z.string().default('Snooker Arena <no-reply@snooker.test>'),
+  SMTP_FROM: z.string().default('Chess Arena <no-reply@chess.test>'),
 
   REAL_MONEY_ENABLED: z
     .preprocess((v) => {

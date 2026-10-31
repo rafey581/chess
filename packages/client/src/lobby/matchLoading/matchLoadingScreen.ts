@@ -20,15 +20,15 @@ export interface MatchLoadingHandle {
 }
 
 const TIPS = [
-  'Wait a minute, the 3D table is rendering...',
-  'Racking the balls...',
-  'Chalking the cue...',
-  'Setting up the arena lights...',
+  'Setting up the board...',
+  'Polishing the pieces...',
+  'Winding the clocks...',
+  'Control the centre early.',
+  'Knights before bishops, usually.',
+  'Castle early to keep your king safe.',
   'Almost there, take a breath.',
-  'Polishing the cloth...',
-  'Warming up the crowd...',
-  'Lining up the cushions...',
-  'Good tables take a moment.'
+  'Every piece counts.',
+  'Good games take a moment.'
 ] as const
 
 const TIP_MS = 2400
@@ -47,7 +47,7 @@ export function showMatchLoading(opts: MatchLoadingShowOpts): MatchLoadingHandle
   root.className = 'ml-root'
   root.setAttribute('role', 'dialog')
   root.setAttribute('aria-modal', 'true')
-  root.setAttribute('aria-label', 'Preparing your table')
+  root.setAttribute('aria-label', 'Preparing your board')
 
   const bg = document.createElement('div')
   bg.className = 'ml-bg'
@@ -68,7 +68,7 @@ export function showMatchLoading(opts: MatchLoadingShowOpts): MatchLoadingHandle
 
   const title = document.createElement('h1')
   title.className = 'ml-title'
-  title.innerHTML = 'PREPARING YOUR <span class="ml-title-amber">TABLE</span>'
+  title.innerHTML = 'PREPARING YOUR <span class="ml-title-amber">BOARD</span>'
 
   const status = document.createElement('p')
   status.className = 'ml-status'
@@ -258,7 +258,7 @@ function buildHallLights(reduced: boolean): HTMLElement {
   return hall
 }
 
-/** Snooker-club vignette: felt table, cue stroke, orbit, chalk — CSS-only motion. */
+/** A small chessboard with a knight hopping between squares - CSS-only motion. */
 function buildClubStage(reduced: boolean): HTMLElement {
   const stage = document.createElement('div')
   stage.className = 'ml-stage'
@@ -272,60 +272,31 @@ function buildClubStage(reduced: boolean): HTMLElement {
   beadB.className = 'ml-orbit-bead ml-orbit-bead--dim'
   orbit.append(beadA, beadB)
 
-  const table = document.createElement('div')
-  table.className = 'ml-table'
-
-  const rail = document.createElement('div')
-  rail.className = 'ml-table-rail'
-  table.appendChild(rail)
-
-  for (const pos of ['tl', 'tr', 'bl', 'br', 'ml', 'mr'] as const) {
-    const pocket = document.createElement('span')
-    pocket.className = `ml-pocket ml-pocket--${pos}`
-    table.appendChild(pocket)
+  const board = document.createElement('div')
+  board.className = 'ml-chessboard'
+  for (let i = 0; i < 64; i++) {
+    const sq = document.createElement('span')
+    sq.className = (Math.floor(i / 8) + i) % 2 === 0 ? 'ml-csq ml-csq--light' : 'ml-csq ml-csq--dark'
+    board.appendChild(sq)
   }
-
-  const baulk = document.createElement('span')
-  baulk.className = 'ml-baulk'
-  const dZone = document.createElement('span')
-  dZone.className = 'ml-d'
-  table.append(baulk, dZone)
-
-  for (const spot of ['blue', 'pink', 'black'] as const) {
-    const el = document.createElement('span')
-    el.className = `ml-spot ml-spot--${spot}`
-    table.appendChild(el)
+  const pieces: Array<[string, number, number, boolean]> = [
+    ['\u265A', 4, 7, false], ['\u265B', 3, 7, false], ['\u265F', 2, 6, false], ['\u265F', 5, 6, false],
+    ['\u265A', 4, 0, true], ['\u265C', 0, 0, true], ['\u265F', 3, 1, true], ['\u265F', 4, 3, true]
+  ]
+  for (const [glyph, file, rank, white] of pieces) {
+    const p = document.createElement('span')
+    p.className = `ml-cpiece ${white ? 'ml-cpiece--w' : 'ml-cpiece--b'}`
+    p.textContent = glyph
+    p.style.left = `${file * 12.5}%`
+    p.style.top = `${(7 - rank) * 12.5}%`
+    board.appendChild(p)
   }
+  const knight = document.createElement('span')
+  knight.className = `ml-cpiece ml-cpiece--w ml-knight${reduced ? '' : ' is-moving'}`
+  knight.textContent = '\u265E'
+  board.appendChild(knight)
 
-  const cueball = document.createElement('div')
-  cueball.className = 'ml-cueball'
-
-  const cue = document.createElement('div')
-  cue.className = 'ml-cue'
-  const shaft = document.createElement('div')
-  shaft.className = 'ml-cue-shaft'
-  const tip = document.createElement('div')
-  tip.className = 'ml-cue-tip'
-  cue.append(shaft, tip)
-
-  const chalk = document.createElement('div')
-  chalk.className = 'ml-chalk'
-
-  const dust = document.createElement('div')
-  dust.className = 'ml-dust'
-  if (!reduced) {
-    for (let i = 0; i < 8; i++) {
-      const speck = document.createElement('span')
-      speck.className = 'ml-speck'
-      speck.style.left = `${10 + ((i * 11) % 80)}%`
-      speck.style.bottom = `${8 + (i % 4) * 10}%`
-      speck.style.setProperty('--ml-dur', `${9 + (i % 5)}s`)
-      speck.style.setProperty('--ml-delay', `${(i * 0.8) % 6}s`)
-      dust.appendChild(speck)
-    }
-  }
-
-  stage.append(orbit, table, cueball, cue, chalk, dust)
+  stage.append(orbit, board)
   return stage
 }
 

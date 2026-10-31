@@ -19,14 +19,16 @@ interface Rule {
 }
 
 const RULES: Record<string, Rule> = {
-  rate_limited: { kind: 'SHOT_FLOOD', threshold: 8, confidence: 90, reason: 'shot flood: excessive rate-limited attempts' },
+  rate_limited: { kind: 'SHOT_FLOOD', threshold: 8, confidence: 90, reason: 'move flood: excessive rate-limited attempts' },
   duplicate_shot: { kind: 'SHOT_REPLAY', threshold: 3, confidence: 80, reason: 'repeated duplicate shot inputs' },
   bad_timestamp: { kind: 'CLOCK_SKEW', threshold: 3, confidence: 40, reason: 'repeated pre-dated timestamps' },
   bad_input: { kind: 'MALFORMED_INPUT', threshold: 5, confidence: 35, reason: 'repeated malformed shot payloads' },
   bad_aim_angle: { kind: 'MALFORMED_INPUT', threshold: 5, confidence: 35, reason: 'repeated non-finite aim angle' },
   bad_power: { kind: 'MALFORMED_INPUT', threshold: 5, confidence: 35, reason: 'repeated out-of-range power' },
   bad_spin: { kind: 'MALFORMED_INPUT', threshold: 5, confidence: 35, reason: 'repeated malformed spin' },
-  bad_cue_pos: { kind: 'MALFORMED_INPUT', threshold: 5, confidence: 35, reason: 'repeated malformed cue position' }
+  bad_cue_pos: { kind: 'MALFORMED_INPUT', threshold: 5, confidence: 35, reason: 'repeated malformed cue position' },
+  bad_square: { kind: 'MALFORMED_INPUT', threshold: 5, confidence: 35, reason: 'repeated malformed move squares' },
+  bad_promotion: { kind: 'MALFORMED_INPUT', threshold: 5, confidence: 35, reason: 'repeated malformed promotion piece' }
 }
 
 interface WindowState {

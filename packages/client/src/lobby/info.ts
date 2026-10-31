@@ -31,7 +31,7 @@ export function renderInfo(section: InfoSection, actions: InfoActions): HTMLElem
   const sw = el('div', 'gl-switch')
   for (const [id, label] of [
     ['controls', 'CONTROLS'],
-    ['rules', 'SNOOKER RULES']
+    ['rules', 'CHESS RULES']
   ] as const) {
     const btn = el('button', 'gl-chip', label) as HTMLButtonElement
     btn.type = 'button'

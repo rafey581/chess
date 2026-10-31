@@ -1,17 +1,17 @@
 /**
  * Lobby copy and static help text — presentation only.
  * Controls match the in-game help overlay + input/placement behaviour.
- * Rules match packages/shared snooker + frame (no free-ball: not implemented).
+ * Rules match the shared chess engine (packages/shared/src/chess).
  */
 
 export const BG_IMAGE = '/lobby-pic-blurred.jpg'
 
 export const HOME_COPY = {
-  eyebrow: 'table ready',
+  eyebrow: 'board ready',
   headline: 'PICK YOUR MATCH',
-  heroTag: '3D SNOOKER / 6 & 10 REDS',
-  heroTitle: 'PLAY SNOOKER',
-  heroSubtitle: 'Aim, power, and spin on a full 3D table.',
+  heroTag: 'ONLINE CHESS / 5+3 BLITZ',
+  heroTitle: 'PLAY CHESS',
+  heroSubtitle: 'Real opponents, real clocks, server-checked moves.',
   heroCta: 'choose your opponent',
   statsEmpty: 'no completed matches yet',
   footerMode: 'Lobby · free practice & online tables'
@@ -20,7 +20,7 @@ export const HOME_COPY = {
 export const SETUP_COPY = {
   back: 'back to lobby',
   eyebrow: 'match options',
-  headline: 'SET THE TABLE',
+  headline: 'SET THE BOARD',
   step: '01 / MODE',
   titleAi: 'Who are you\nplaying?',
   vsAiTitle: 'VS AI',
@@ -42,15 +42,15 @@ export const SETUP_COPY = {
   opponentFriendHint: 'invite one friend',
   friendPickLabel: 'WHICH FRIEND',
   friendEmpty: 'no friends yet — add one from the FRIENDS screen first',
-  // The red count leads the list and is filled in from the chosen stake (setup.ts).
-  facts: ['6 colours', '1 white cue ball'] as const,
-  panelBrand: 'SNOOKER STAKE',
-  panelBadge: 'LIVE TABLE',
+  // The time control leads the list (setup.ts).
+  facts: ['colours alternate each game', 'draws are replayed'] as const,
+  panelBrand: 'CHESS STAKE',
+  panelBadge: 'LIVE BOARD',
   panelTitle: 'Ready when you are',
-  panelBody: 'Confirm the mode and start when the table feels right.',
+  panelBody: 'Confirm the mode and start when you are ready to play.',
   start: 'START MATCH',
   formats: {
-    BO1: { label: 'SINGLE FRAME', hint: '1 frame' },
+    BO1: { label: 'SINGLE GAME', hint: '1 game' },
     BO3: { label: 'BEST OF 3', hint: 'first to 2' },
     BO5: { label: 'BEST OF 5', hint: 'first to 3' }
   } as const
@@ -60,7 +60,7 @@ export const STATS_COPY = {
   pageName: 'Statistics',
   eyebrow: 'completed matches',
   title: 'YOUR RECORD',
-  emptyRecent: 'no completed matches yet, your record begins at the table',
+  emptyRecent: 'no completed matches yet, your record begins at the board',
   returnLobby: 'RETURN TO LOBBY',
   yourPanel: 'Your record',
   recentPanel: 'Recent matches',
@@ -84,7 +84,7 @@ export const SETTINGS_COPY = {
   signOut: 'Log out',
   signOutConfirm: 'Log out of this device?',
   soundLabel: 'Table sounds',
-  soundHint: 'Pots, cushions, fouls, and crowd cues share one mute.',
+  soundHint: 'Move sounds, clicks and music share one mute.',
   qualityLabel: 'Graphics quality',
   qualityHint: 'Auto picks for this device and adjusts while you play. A fixed level stays exactly as chosen.',
   qualityApplied: 'Applies from your next match.',
@@ -113,59 +113,55 @@ export interface NumberedSection {
 
 export const CONTROLS_SECTIONS: readonly NumberedSection[] = [
   {
-    title: 'Aiming',
-    body: 'Move the pointer or finger across the cloth to point the cue. The aim line follows the cue ball toward your target.'
+    title: 'Moving a piece',
+    body: 'Tap or click one of your pieces to see where it can go, then tap a highlighted square. You can also drag the piece onto its square.'
   },
   {
-    title: 'Power',
-    body: 'Drag the power slider, hold to charge, or use the up and down keys to trim strength before you shoot.'
+    title: 'Legal moves only',
+    body: 'Dots mark empty squares the piece can reach and rings mark captures. A move the rules do not allow is simply not offered.'
   },
   {
-    title: 'Spin',
-    body: 'Side spin uses the left and right keys; top and bottom spin use W and S. The dial shows the tip offset you have set.'
+    title: 'Promotion',
+    body: 'When a pawn reaches the last rank, choose a queen, rook, bishop or knight from the picker.'
   },
   {
-    title: 'Shoot',
-    body: 'Release the charge gesture or press Space to play the shot. The server simulates the stroke; your client replays it.'
+    title: 'Clocks',
+    body: 'Each player has 5 minutes per game, plus 3 seconds added after every move. Your clock only runs on your turn.'
   },
   {
-    title: 'Camera',
-    body: 'Right-drag or middle-drag orbits the view. Use the camera tool in a match to switch cue-ball, broadcast, side, close-up, or overhead.'
+    title: 'Board orientation',
+    body: 'Your pieces are always at the bottom. When you play black the board is turned round for you.'
   },
   {
-    title: 'Cue ball in the D',
-    body: 'At the start of a frame the cue ball must be placed inside the D. After a mid-frame foul that leaves the cue in hand, you may place it anywhere legal on the cloth.'
-  },
-  {
-    title: 'Shot timer',
-    body: 'Each visit has a turn clock. If time runs out with no stroke, a foul is awarded and the visit changes.'
+    title: 'Resign, chat and leave',
+    body: 'Use the flag to resign the match, the speech bubble for quick chat, and the door to return to the lobby.'
   }
 ]
 
 export const RULES_SECTIONS: readonly NumberedSection[] = [
   {
-    title: 'Opening contact',
-    body: 'While reds remain, the ball on is a red. Your first contact must be a red; potting a red scores one point and keeps the visit.'
+    title: 'Winning a game',
+    body: 'Checkmate the opposing king, or win when your opponent runs out of time. White always moves first.'
   },
   {
-    title: 'Colour after a red',
-    body: 'After a red you may nominate any colour. Pot that colour for its value, then it is re-spotted while reds are still on the table, and you return to a red.'
+    title: 'Special moves',
+    body: 'Castling, en passant and pawn promotion are all supported. You cannot castle out of, through or into check.'
   },
   {
-    title: 'Clearing the colours',
-    body: 'When the last red is gone, colours are taken in order: yellow, green, brown, blue, pink, black. They stay down once potted in this phase.'
+    title: 'Draws',
+    body: 'Stalemate, threefold repetition, the fifty-move rule and insufficient material are drawn automatically. A drawn game scores nothing and is replayed.'
   },
   {
-    title: 'Visits and ends',
-    body: 'A legal pot keeps your visit. Missing, failing to hit the ball on, or potting the wrong ball ends the visit and may foul.'
+    title: 'Matches',
+    body: 'A match is a single game, best of three or best of five. Colours alternate every game; the first player to win the required games takes the match.'
   },
   {
-    title: 'Foul values',
-    body: 'Fouls award the opponent at least four points, or the value of the highest ball involved up to seven (black). The cue ball is re-spotted when it is potted.'
+    title: 'Clock and disconnects',
+    body: 'If your flag falls you lose the game. If you disconnect, your clock pauses and you have a short grace period to return before the match is awarded to your opponent.'
   },
   {
-    title: 'Cue ball in hand',
-    body: 'After certain fouls the next striker places the cue ball. Break-offs must stay in the D; other in-hand placements may go anywhere on the cloth that is clear.'
+    title: 'Resigning',
+    body: 'Resigning concedes the whole match, and the stake, to your opponent.'
   }
 ]
 
@@ -225,7 +221,7 @@ export const INVITE_COPY = {
   share: 'share',
   copied: 'copied to clipboard',
   copyFailed: 'could not copy — select it and copy manually',
-  shareText: (bonus: number) => `Join me on Snooker Stake. Sign up and play — I earn ${bonus} USDT when you finish your first match.`,
+  shareText: (bonus: number) => `Join me on Chess Stake. Sign up and play — I earn ${bonus} USDT when you finish your first match.`,
   statInvited: 'INVITED',
   statPlayed: 'PLAYED',
   statEarned: 'EARNED',

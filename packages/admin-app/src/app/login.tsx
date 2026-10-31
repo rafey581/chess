@@ -48,7 +48,7 @@ export default function LoginScreen(): ReactNode {
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           <View style={styles.brand}>
             <View style={styles.logo} />
-            <Text style={styles.title}>Snooker Arena</Text>
+            <Text style={styles.title}>Chess Arena</Text>
             <Text style={styles.subtitle}>Staff access</Text>
           </View>
 

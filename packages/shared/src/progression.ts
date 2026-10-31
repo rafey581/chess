@@ -152,7 +152,7 @@ const BADGE_RULES: readonly BadgeRule[] = [
   { code: 'WINS_10', name: 'Contender', description: 'Win 10 online matches.', icon: 'medal', rarity: 'COMMON', earned: (s) => s.onlineWins >= 10 },
   { code: 'WINS_50', name: 'Veteran', description: 'Win 50 online matches.', icon: 'medal', rarity: 'RARE', earned: (s) => s.onlineWins >= 50 },
   { code: 'WINS_100', name: 'Centurion', description: 'Win 100 online matches.', icon: 'medal', rarity: 'EPIC', earned: (s) => s.onlineWins >= 100 },
-  { code: 'MATCHES_25', name: 'Regular', description: 'Finish 25 online matches.', icon: 'cue', rarity: 'COMMON', earned: (s) => s.onlineMatches >= 25 },
+  { code: 'MATCHES_25', name: 'Regular', description: 'Finish 25 online matches.', icon: 'pawn', rarity: 'COMMON', earned: (s) => s.onlineMatches >= 25 },
   { code: 'STREAK_3', name: 'Hat-Trick', description: 'Win 3 online matches in a row.', icon: 'flame', rarity: 'COMMON', earned: (s) => s.winStreak >= 3 },
   { code: 'STREAK_5', name: 'On Fire', description: 'Win 5 online matches in a row.', icon: 'flame', rarity: 'RARE', earned: (s) => s.winStreak >= 5 },
   { code: 'STREAK_10', name: 'Unstoppable', description: 'Win 10 online matches in a row.', icon: 'flame', rarity: 'EPIC', earned: (s) => s.winStreak >= 10 },

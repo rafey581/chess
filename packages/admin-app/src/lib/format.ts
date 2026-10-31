@@ -12,7 +12,7 @@ export function formatAmount(value: string | number | null | undefined): string 
   if (value === null || value === undefined || value === '') return '0'
   const n = typeof value === 'number' ? value : Number(value)
   if (!Number.isFinite(n)) return String(value)
-  // Keep up to 6 decimals (a Snooker stake is whole USDT; a referral cent is not).
+  // Keep up to 6 decimals (a Chess stake is whole USDT; a referral cent is not).
   return n.toFixed(6).replace(/\.?0+$/, '')
 }
 

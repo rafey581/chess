@@ -1,8 +1,14 @@
-# Snooker Platform
+# Chess Platform
 
-Online multiplayer snooker gaming platform. Real-time 1v1 matches, 8-player
-knockout tournaments and free robot-AI practice, backed by a server-authoritative
-deterministic physics + rules engine and a ledger-based wallet.
+Online multiplayer chess platform. Real-time 1v1 matches, 8-player knockout
+tournaments and free robot-AI practice, backed by a server-authoritative chess
+rules engine and a ledger-based wallet.
+
+> This project began as a snooker platform. The game itself has been replaced with
+> chess; the lobby, wallet, stakes, matchmaking, friends, referrals, tournaments,
+> progression, notifications, support and the staff app are unchanged. Internal
+> package names (`@snooker/*`), bundle ids and storage keys were kept so existing
+> builds and installs keep working.
 
 > Balances are held in **USDT at 1:1**: deposits credit exactly what was sent, and
 > stakes/payouts are quoted in USDT. The real-money path (`REAL_MONEY_ENABLED`) stays
@@ -10,7 +16,7 @@ deterministic physics + rules engine and a ledger-based wallet.
 > demonstrable, offline bookkeeping economy denominated in USDT.
 
 See also:
-- `development_plan.md` — full technical specification
+- `development_plan.md` — original (snooker-era) technical specification
 - `product_showcase_client_review.md` — client-facing product overview
 - `RUNBOOK.md` — boot, migration, backup/restore and monitoring procedures
 
@@ -18,7 +24,7 @@ See also:
 
 ```
 packages/
-  shared/     deterministic physics + snooker rules engine (shared by server & client)
+  shared/     chess rules engine, match/clock logic and practice AI (shared by server, client & admin)
   server/     Node.js API, Socket.IO game server, wallet/settlement, admin
   client/     Vite browser app (game renderer + UI)
   admin-app/  Expo (React Native) staff app - the only admin surface
@@ -28,10 +34,29 @@ packages/
 
 Open tables: **1, 5, 10, 20, 50, 100 USDT**. Master Match: **500, 1000, 2000, 3000, 5000 USDT**.
 
-Reds follow the stake: below **100 USDT** (and practice) a frame is racked with **6 reds**,
-from **100 USDT** up (the 100 table and every Master Match) with **10 reds**. The count is
-fixed on the match when its game starts (`Match.reds`), so every frame and the admin
-replay use the same rack. Matches from before this were 15-red.
+## How a match is played
+
+- **Rules** — full chess: castling, en passant, promotion (with a picker), check,
+  checkmate and stalemate. Stalemate, threefold repetition, the fifty-move rule
+  and insufficient material are drawn automatically. The rules engine lives in
+  `packages/shared/src/chess/engine.ts` and is checked against standard perft counts.
+- **Formats** — single game (BO1), best of 3 or best of 5. Each game takes the
+  place a frame used to: colours alternate every game (the table opener has white
+  in game 1), and the first player to win the required games takes the match and
+  the stake. A drawn game scores nothing and is replayed.
+- **Clock** — 5 minutes per player per game, plus 3 seconds after every move
+  (`CHESS_CLOCK_MS` / `CHESS_INCREMENT_MS`). Running out of time loses the game.
+  A player who disconnects has their clock paused and gets the reconnect grace
+  period; after that the match is awarded to the opponent, as before.
+- **Resign** — concedes the whole match (and the stake).
+- **Server authority** — clients send `move:play { from, to, promotion? }`; the
+  room validates turn and legality, runs the clocks and broadcasts the position
+  (FEN, SAN move list, last move, clocks). Every move is stored as a `MOVE`
+  game event carrying the resulting FEN, which drives the admin replay.
+- **Practice robot** — alpha-beta search over material and piece-square tables
+  (`packages/shared/src/chess/ai.ts`). EASY looks 1 ply ahead and often blunders,
+  MEDIUM 2 plies, HARD 3 plies, each within a ~350 ms budget so it never stalls
+  the game server.
 
 The stake ceiling is an admin setting (`maxStake`, default 5000). A database set up with
 the old default of 10 refuses every table above 10 USDT until it is raised in the admin
@@ -96,7 +121,7 @@ pnpm dev                  # runs server + client in watch mode
 Staff do their work from `packages/admin-app`, an Expo (React Native) app — the
 web client is player-only and exposes no admin surface. It covers the dashboard,
 deposit and withdrawal review, users (role, status, balance adjustments),
-matches with a stroke-by-stroke replay, settings, fraud/ledger checks and the
+matches with a move-by-move replay, settings, fraud/ledger checks and the
 audit log.
 
 ```bash
@@ -111,7 +136,7 @@ seeded admin account is created by `pnpm db:seed`.
 
 ### Player app (Android debug APK)
 
-The playable client is Snooker Stake, a Capacitor app in `packages/client` (`com.snookerx.game`).
+The playable client is Chess Stake, a Capacitor app in `packages/client` (`com.snookerx.game`).
 A debug APK is built with the JDK and Android SDK (compile/target SDK 35):
 
 ```bash
@@ -129,9 +154,6 @@ cd android && ./gradlew assembleDebug
 running the API. Change that one line and rebuild to aim a handset at another host.
 The API still has to be reachable, and `REAL_MONEY_ENABLED` is unchanged.
 
-Graphics quality is automatic: low on weak phones, medium on typical Android,
-high on desktop. Override with `?quality=low|medium|high` or the in-game setting.
-Rails and pocket leather use the birch and hide photos in `public/textures`.
 
 ### Staff app (Android APK via EAS)
 
@@ -162,7 +184,7 @@ fails to reach the API with no visible error.
 ## Useful Scripts
 
 ```bash
-pnpm test          # run all tests (physics, rules, services)
+pnpm test          # run all tests (chess engine, rooms, services)
 pnpm typecheck     # typecheck all packages
 pnpm build         # build all packages
 pnpm e2e           # full end-to-end suite (needs a running server; mutates dev DB)

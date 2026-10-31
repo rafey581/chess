@@ -46,7 +46,7 @@ describe('one account per phone', () => {
     const second = await signup(phone)
     expect(second.statusCode).toBe(409)
     expect(second.json()).toMatchObject({ ok: false, code: 'device_limit' })
-    expect((second.json() as { error: string }).error).toMatch(/already has a Snooker Stake account/)
+    expect((second.json() as { error: string }).error).toMatch(/already has a Chess Stake account/)
     // Nothing was created for the refused sign-up.
     expect(await prisma.user.count({ where: { username: usernames[usernames.length - 1] } })).toBe(0)
   })

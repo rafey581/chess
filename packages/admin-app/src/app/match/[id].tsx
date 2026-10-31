@@ -71,7 +71,7 @@ export default function MatchDetailScreen() {
       {!eventsState.loading && !eventsState.error && events.length === 0 ? (
         <Empty label="No events recorded for this match." />
       ) : null}
-      {events.length > 0 ? <ReplayPanel events={events} reds={match?.reds ?? 15} /> : null}
+      {events.length > 0 ? <ReplayPanel events={events} /> : null}
 
       <Text style={styles.footnote}>
         Replays are reconstructed with the same engine that ran the match, from the recorded events only.

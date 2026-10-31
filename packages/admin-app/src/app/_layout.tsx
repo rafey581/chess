@@ -24,9 +24,9 @@ function RootNavigator() {
   // looks like a form, so opening the app never seems to log out and back in again.
   if (!ready) {
     return (
-      <View style={styles.splash} accessibilityRole="progressbar" accessibilityLabel="Opening Snooker Admin">
+      <View style={styles.splash} accessibilityRole="progressbar" accessibilityLabel="Opening Chess Admin">
         <View style={styles.logo} />
-        <Text style={styles.title}>Snooker Admin</Text>
+        <Text style={styles.title}>Chess Admin</Text>
         <ActivityIndicator color={colors.accent} style={styles.spinner} />
       </View>
     )

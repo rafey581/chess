@@ -249,8 +249,8 @@ export async function settleMatch(settlement: Settlement): Promise<void> {
     const winnerName = users.find((u) => u.id === outcome.winnerId)?.username ?? 'Opponent'
     const loserName = users.find((u) => u.id === outcome.loserId)?.username ?? 'Opponent'
     const how =
-      outcome.reason === 'frames'
-        ? 'match decided on frames'
+      outcome.reason === 'games' || outcome.reason === 'frames'
+        ? 'match decided on games won'
         : outcome.reason === 'abandon'
           ? 'opponent abandoned the match'
           : outcome.reason === 'concede'

@@ -18,7 +18,6 @@ model User {
   phone String? @unique
   emailVerified Boolean @default(false)
   phoneVerified Boolean @default(false)
-  dateOfBirth   DateTime?
   passwordHash String?
   // How this account authenticates. Local accounts are PASSWORD.
   authProvider String @default("PASSWORD")

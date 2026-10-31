@@ -4,8 +4,8 @@ import type { FastifyInstance } from 'fastify'
 import { prisma } from '../db/index.js'
 import { config } from '../config.js'
 import { GameRoom } from './room.js'
-import type { GameUpdateEvent, ShotInputDto } from './room.js'
-import { ShotEnforcement } from './throttle.js'
+import type { GameUpdateEvent } from './room.js'
+import { MoveEnforcement } from './throttle.js'
 import { noteRejectedShot, recordFraudFlag } from '../fraud/index.js'
 import { tokenIsCurrent, verifyToken } from '../auth/guards.js'
 import { settleMatch, refundMatch } from '../matches/service.js'
@@ -15,7 +15,7 @@ import { setChallengeSenders, expireStaleChallenges } from '../challenges/servic
 import { isMaintenance, getSettings } from '../settings/index.js'
 import { PRACTICE_DAILY_FREE_LIMIT } from '@snooker/shared'
 import type { PracticeAiLevel } from '@snooker/shared'
-import { isMatchChatPhrase, MATCH_CHAT_COOLDOWN_MS, redsForStake } from '@snooker/shared'
+import { isMatchChatPhrase, MATCH_CHAT_COOLDOWN_MS } from '@snooker/shared'
 import type { Prisma } from '@prisma/client'
 import { touchLastSeen } from '../users/activity.js'
 
@@ -31,7 +31,7 @@ export function createGameServer(app: FastifyInstance, httpServer: HttpServer): 
   const rooms = new Map<string, GameRoom>()
   const roomLocks = new Map<string, Promise<void>>()
   const graceTimers = new Map<string, NodeJS.Timeout>()
-  const shots = new ShotEnforcement()
+  const moves = new MoveEnforcement()
   /** Last quick-chat line per user, for the per-line cooldown. */
   const lastChatAt = new Map<string, number>()
 
@@ -202,7 +202,7 @@ export function createGameServer(app: FastifyInstance, httpServer: HttpServer): 
     board: io,
     persist,
     log: (msg: string) => app.log.debug(msg),
-    onFrameEnd: async (id: string, frameWinner: number, scores: { player0: number; player1: number }) => {
+    onFrameEnd: async (id: string, frameWinner: number | null, scores: { player0: number; player1: number }) => {
       app.log.info({ id, frameWinner, scores }, 'frame ended')
       void id
     },
@@ -302,15 +302,7 @@ export function createGameServer(app: FastifyInstance, httpServer: HttpServer): 
         if (!room) {
           let aiLevel: PracticeAiLevel | undefined
           if (match.aiLevel) aiLevel = match.aiLevel as PracticeAiLevel
-          const settings = await getSettings()
-          // Six reds below 100 USDT a player, ten from 100 up; practice has no stake.
-          // Fixed on the match the first time its game starts, so a room rebuilt later
-          // (and the admin replay) racks exactly what was played.
-          const reds = match.reds ?? redsForStake(Number(match.stakePerPlayer))
-          if (match.reds === null) {
-            await prisma.match.update({ where: { id: matchId }, data: { reds } }).catch(() => undefined)
-          }
-          room = new GameRoom(matchId, match.matchType, match.format, 0, aiLevel, callbacks, settings.turnTimeoutSec, reds)
+          room = new GameRoom(matchId, match.matchType, match.format, aiLevel, callbacks)
           rooms.set(matchId, room)
         }
         room.registerSocket(userId, entry.seat, socket.id)
@@ -348,167 +340,32 @@ export function createGameServer(app: FastifyInstance, httpServer: HttpServer): 
       if (signal) void recordFraudFlag(signal, userId)
     }
 
-    socket.on('shot:play', (payload: { matchId: string; input: ShotInputDto }) => {
-      const { matchId, input } = payload ?? {}
-      // A shot that lands while the table is still replaying is the striker obeying
-      // the pacing rule, so it is refused here, before the rate limiter sees it. The
-      // limiter used to take a token first, which meant a player who waited as told
-      // could empty the bucket purely by retrying, and the resulting rate_limited
-      // rejection is recorded as a shot flood against them. Nothing is simulated on
-      // this path and no state changes, so the exemption costs the flood guard
-      // nothing; once the replay clears, the bucket applies to this shot again.
-      const pacing = getOrCreateRoom(matchId)?.pacingRejection(userId)
-      if (pacing) {
-        socket.emit('error', { code: pacing })
+    // A move from the player whose turn it is. Shape and flood checks happen here; the
+    // room is the authority on whether the move is legal and whose turn it is.
+    socket.on('move:play', (payload: { matchId: string; move: unknown }) => {
+      const { matchId, move } = payload ?? {}
+      if (!matchId) {
+        socket.emit('error', { code: 'bad_request' })
         return
       }
-      if (!shots.take(socket.id, userId)) {
+      if (!moves.take(socket.id, userId)) {
         socket.emit('error', { code: 'rate_limited' })
         signalAbuse('rate_limited')
         return
       }
-      const valid = shots.validate(input)
+      const valid = moves.validate(move)
       if (!valid.ok) {
         socket.emit('error', { code: valid.reason })
         signalAbuse(valid.reason)
         return
       }
-      if (shots.isReplay(socket.id, input)) {
-        socket.emit('error', { code: 'duplicate_shot' })
-        signalAbuse('duplicate_shot')
-        return
-      }
       const room = getOrCreateRoom(matchId)
       if (!room) {
         socket.emit('error', { code: 'match_not_found' })
         return
       }
-      const result = room.handleShot(userId, input)
-      if (!result.accepted) {
-        socket.emit('error', { code: result.error ?? 'rejected' })
-        return
-      }
-      shots.recordAccepted(socket.id, input)
-    })
-
-    // The striker says it is about to place its cue ball. This is a declaration, not a
-    // game action: it moves nothing and cannot foul anybody. All it does is tell the room
-    // that the player is mid-placement, which is what lets the room hold the strike clock
-    // while the player spends time on something that is not aiming.
-    //
-    // Deliberately not rate limited as a shot. A player searching for a legal spot will
-    // send this on every approach to the table, and counting those against the shot
-    // flood guard would let a player trip a fraud flag for playing the game correctly.
-    // After a foul, the player it was committed against chooses to play on or to make the
-    // offender play again. One answer, checked by the room; nothing is simulated here.
-    socket.on('foul:choice', (payload: { matchId: string; playAgain: boolean }) => {
-      const { matchId, playAgain } = payload ?? {}
-      if (!matchId || typeof playAgain !== 'boolean') {
-        socket.emit('error', { code: 'bad_request' })
-        return
-      }
-      const room = getOrCreateRoom(matchId)
-      if (!room) {
-        socket.emit('error', { code: 'match_not_found' })
-        return
-      }
-      const result = room.handleFoulChoice(userId, playAgain)
+      const result = room.handleMove(userId, valid.move)
       if (!result.accepted) socket.emit('error', { code: result.error ?? 'rejected' })
-    })
-
-    socket.on('placement:begin', (payload: { matchId: string }) => {
-      const { matchId } = payload ?? {}
-      if (!matchId) {
-        socket.emit('error', { code: 'bad_request' })
-        return
-      }
-      const room = getOrCreateRoom(matchId)
-      if (!room) {
-        socket.emit('error', { code: 'match_not_found' })
-        return
-      }
-      const result = room.handlePlacementBegin(userId)
-      if (!result.accepted) socket.emit('error', { code: result.error ?? 'rejected' })
-    })
-
-    // The striker puts the cue ball down where it chose. This is the placement that used
-    // to ride in on `shot:play` as a zero-power shot with a `cuePos`, which the rules
-    // layer resolved as a stroke: no contact, so a foul, the penalty, and the visit gone.
-    //
-    // It is a separate event so that the room can place the ball and change nothing else.
-    // There is no shot token taken here either, for the same reason as above plus one
-    // more: a spot the player thought was legal can turn out not to be, and being told so
-    // and trying again is correct play, not a shot flood.
-    socket.on(
-      'placement:confirm',
-      (payload: { matchId: string; cuePos: { x: number; y: number } }) => {
-        const { matchId, cuePos } = payload ?? {}
-        if (!matchId) {
-          socket.emit('error', { code: 'bad_request' })
-          return
-        }
-        const room = getOrCreateRoom(matchId)
-        if (!room) {
-          socket.emit('error', { code: 'match_not_found' })
-          return
-        }
-        // Bounds are checked here so a malformed coordinate is refused before it can
-        // reach the rules layer. The rules are the authority on legality - this is only
-        // the shape of the message.
-        const shape = shots.validate({ aimAngle: 0, power: 0, spin: { x: 0, y: 0 }, cuePos })
-        if (!shape.ok) {
-          socket.emit('error', { code: shape.reason })
-          return
-        }
-        const result = room.handlePlacementConfirm(userId, cuePos)
-        if (!result.accepted) socket.emit('error', { code: result.error ?? 'rejected' })
-      }
-    )
-
-    // The second half of the placement: the client reports that the camera has landed back
-    // at the gameplay view, and the strike clock resumes from the time the hold preserved.
-    //
-    // It is separate from the confirmation because that is the instant the player can
-    // actually shoot. Resuming on the confirmation would spend the first seconds of every
-    // placement on a transition the player could not act through, which is exactly the
-    // complaint the hold exists to answer.
-    //
-    // Like `shot:done` this is a pacing signal rather than a game action: it cannot place
-    // or move anything, and the room re-checks that the ball is down and that the hold
-    // belongs to this player before it lifts it. Rate limiting it against the shot guard
-    // would make a client that reconnects mid-flight look like a flooder.
-    socket.on('placement:done', (payload: { matchId: string }) => {
-      const { matchId } = payload ?? {}
-      if (!matchId) {
-        socket.emit('error', { code: 'bad_request' })
-        return
-      }
-      const room = getOrCreateRoom(matchId)
-      if (!room) {
-        socket.emit('error', { code: 'match_not_found' })
-        return
-      }
-      const result = room.handlePlacementDone(userId)
-      if (!result.accepted) socket.emit('error', { code: result.error ?? 'rejected' })
-    })
-
-    // A client reports that a shot has finished animating. The room holds the next
-    // shot until it hears this, which is what stops a bot firing a new shot into the
-    // middle of the previous one's replay. It is a pacing signal, not a game
-    // action, so it is not rate limited as a shot is and it can change no state of
-    // its own.
-    socket.on('shot:done', (payload: { matchId: string; token?: number }) => {
-      const { matchId, token } = payload ?? {}
-      if (!matchId) return
-      const room = getOrCreateRoom(matchId)
-      if (!room) return
-      // The room itself checks that this user is seated in the match, so an
-      // outsider who guessed the id cannot release somebody else's hold. It also
-      // checks the token, so an acknowledgement delayed past the shot it belonged
-      // to cannot cut short the shot that is on screen now, and it checks that this
-      // socket was one of the ones watching, so a tab that joined late or reconnected
-      // cannot end a replay it never saw.
-      room.noteShotPlayed(socket.data.userId, token, socket.id)
     })
 
     socket.on('concede', (payload: { matchId: string }) => {
@@ -528,29 +385,7 @@ export function createGameServer(app: FastifyInstance, httpServer: HttpServer): 
     })
 
     // In-match quick chat. The client never sends free text: it sends one of the
-    // shared phrase ids, so the only place unsanitised input could enter is a
-    // bot, and the whitelist refuses anything that is not a known id before the
-    // message is ever broadcast. Echoing ids to the room (rather than the text)
-    // keeps the render on every client in sync with the same list that validated
-    // this message, and leaves the door open to localised copy later.
-    // The striker's aim, live, for the other player's screen: where the cue points and how
-    // far back it is drawn. Picture only: nothing here is a shot or changes the game. At
-    // most ten a second per socket; anything faster, malformed, or sent out of turn is
-    // dropped without a reply.
-    let lastAimAt = 0
-    socket.on('aim:live', (payload: { matchId: string; angle: number; power: number }) => {
-      const { matchId, angle, power } = payload ?? {}
-      if (typeof matchId !== 'string' || !Number.isFinite(angle) || !Number.isFinite(power)) return
-      if (Math.abs(angle) > 100 || power < 0 || power > 1) return
-      const now = Date.now()
-      if (now - lastAimAt < 90) return
-      const room = rooms.get(matchId)
-      const seat = room?.canShowAim(userId)
-      if (seat === null || seat === undefined) return
-      lastAimAt = now
-      socket.to(`match:${matchId}`).emit('opponent:aim', { seat, angle, power })
-    })
-
+    // shared phrase ids, and the whitelist refuses anything that is not a known id.
     socket.on('match:chat', (payload: { matchId: string; phraseId: string }) => {
       const { matchId, phraseId } = payload ?? {}
       if (!matchId || typeof phraseId !== 'string' || phraseId.length === 0) {

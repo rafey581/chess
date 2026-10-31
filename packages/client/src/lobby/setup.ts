@@ -1,4 +1,7 @@
-import { MATCH_FORMATS, PRACTICE_AI_LEVELS, redsForStake } from '@snooker/shared'
+import { CHESS_CLOCK_MS, CHESS_INCREMENT_MS, MATCH_FORMATS, PRACTICE_AI_LEVELS } from '@snooker/shared'
+
+/** The time control, e.g. "5+3": minutes per player plus seconds added per move. */
+const TIME_CONTROL = `${CHESS_CLOCK_MS / 60000}+${CHESS_INCREMENT_MS / 1000}`
 import type { MatchFormat, PracticeAiLevel } from '@snooker/shared'
 import { DIFFICULTIES } from '../lobbyModel.js'
 import { SETUP_COPY } from './content.js'
@@ -160,11 +163,9 @@ export function renderSetup(
     }
   }
 
-  // The rack follows the stake: practice and tables under 100 USDT play 6 reds,
-  // 100 USDT and up (every Master Match) play 10.
-  const stakeUsdt = state.mode === 'online' ? (bridge.getStakeTiers().find((t) => t.id === state.stakeTierId)?.usdt ?? 0) : 0
+  // The time control leads the facts; it is the same at every stake.
   const facts = el('div', 'gl-facts')
-  for (const fact of [`${redsForStake(stakeUsdt)} reds`, ...SETUP_COPY.facts]) facts.appendChild(el('span', 'gl-fact', fact))
+  for (const fact of [`${TIME_CONTROL} clock`, ...SETUP_COPY.facts]) facts.appendChild(el('span', 'gl-fact', fact))
   left.appendChild(facts)
 
   const right = el('div', 'gl-panel gl-setup__right')
@@ -237,14 +238,13 @@ export function tiersForTable(tiers: LobbyStakeTier[], table: StakeTableChoice):
 function buildSummary(state: SetupState, bridge: LobbyBridge): string {
   if (!state.mode) return 'SELECT A MODE TO BEGIN'
   if (state.mode === 'ai') {
-    return `VS AI / ${state.difficulty} / ${SETUP_COPY.formats.BO1.label} / ${redsForStake(0)} REDS`
+    return `VS AI / ${state.difficulty} / ${SETUP_COPY.formats.BO1.label} / ${TIME_CONTROL}`
   }
   const fmt = SETUP_COPY.formats[state.format]
   const vs = state.opponent === 'friend' ? (state.friendUsername ?? 'A FRIEND') : 'ANYONE'
   const table = state.table === 'master' ? 'MASTER' : 'OPEN'
   const tier = bridge.getStakeTiers().find((item) => item.id === state.stakeTierId)
-  const reds = `${redsForStake(tier?.usdt ?? 0)} REDS`
-  return `ONLINE / ${fmt.label} / ${vs} / ${table}${tier ? ` / ${tier.label}` : ''} / ${reds}`
+  return `ONLINE / ${fmt.label} / ${vs} / ${table}${tier ? ` / ${tier.label}` : ''} / ${TIME_CONTROL}`
 }
 
 export function defaultSetupState(

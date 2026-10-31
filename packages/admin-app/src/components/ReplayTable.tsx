@@ -1,74 +1,59 @@
 import { useState, type ReactNode } from 'react'
 import { LayoutChangeEvent, StyleSheet, Text, View } from 'react-native'
-import { TABLE_LENGTH, TABLE_WIDTH } from '@snooker/shared'
-import type { FrameState } from '@snooker/shared'
+import { squareIndex } from '@snooker/shared'
+import type { Piece } from '@snooker/shared'
 import { colors, radius, spacing } from '@/theme'
-import { ballColor } from '@/lib/replay'
 
 /**
- * Draws a table state with plain Views.
- *
- * The web panel used a canvas; there is no canvas on React Native, and pulling in
- * Skia or SVG for forty circles is not worth the native dependency. Positions are
- * in table millimetres and are scaled to the measured width, so the same frame
- * renders identically at any size.
+ * Draws a chess position with plain Views and text glyphs: no canvas, Skia or SVG
+ * dependency. White is at the bottom.
  */
+const GLYPH: Record<string, string> = { k: '♚', q: '♛', r: '♜', b: '♝', n: '♞', p: '♟' }
+const LIGHT = '#ecd9b6'
+const DARK = '#b07a4f'
+const LAST = '#e8c860'
 
-const RAIL = 8
-// Real ball radius is ~26mm against a 3569mm table. The ratio keeps the balls in
-// proportion instead of a fixed pixel size that only looks right on one screen.
-const BALL_RADIUS_RATIO = 27 / TABLE_LENGTH
-
-export function ReplayTable({ frame }: { frame: FrameState }): ReactNode {
+export function ReplayTable({ board, lastMove }: { board: Array<Piece | null>; lastMove: { from: string; to: string } | null }): ReactNode {
   const [width, setWidth] = useState(0)
+  const onLayout = (event: LayoutChangeEvent): void => setWidth(event.nativeEvent.layout.width)
+  const size = Math.max(0, width - 12)
+  const cell = size / 8
+  const highlighted = new Set(lastMove ? [squareIndex(lastMove.from), squareIndex(lastMove.to)] : [])
 
-  const onLayout = (event: LayoutChangeEvent): void => {
-    setWidth(event.nativeEvent.layout.width)
+  const rows: ReactNode[] = []
+  for (let rank = 7; rank >= 0; rank--) {
+    const cells: ReactNode[] = []
+    for (let file = 0; file < 8; file++) {
+      const idx = rank * 8 + file
+      const piece = board[idx]
+      const white = piece ? piece === piece.toUpperCase() : false
+      cells.push(
+        <View
+          key={idx}
+          style={[styles.cell, { width: cell, height: cell, backgroundColor: highlighted.has(idx) ? LAST : (rank + file) % 2 ? LIGHT : DARK }]}
+        >
+          {piece ? (
+            <Text style={[styles.piece, { fontSize: cell * 0.78, lineHeight: cell }, white ? styles.white : styles.black]}>
+              {GLYPH[piece.toLowerCase()]}
+            </Text>
+          ) : null}
+        </View>
+      )
+    }
+    rows.push(
+      <View key={rank} style={styles.row}>
+        {cells}
+      </View>
+    )
   }
 
-  const clothWidth = Math.max(0, width - RAIL * 2)
-  const clothHeight = clothWidth * (TABLE_WIDTH / TABLE_LENGTH)
-  const scale = clothWidth > 0 ? clothWidth / TABLE_LENGTH : 0
-  const ballRadius = Math.max(3, clothWidth * BALL_RADIUS_RATIO)
-
   return (
-    <View style={styles.rail} onLayout={onLayout}>
-      <View style={[styles.cloth, { width: clothWidth, height: clothHeight }]}>
-        {scale > 0
-          ? frame.balls.map((ball) => {
-              if (ball.potted) return null
-              const size = ballRadius * 2
-              const left = ball.pos.x * scale - ballRadius
-              const top = ball.pos.y * scale - ballRadius
-              if (left + size < 0 || top + size < 0 || left > clothWidth || top > clothHeight) return null
-              return (
-                <View
-                  key={ball.id}
-                  style={[
-                    styles.ball,
-                    {
-                      left,
-                      top,
-                      width: size,
-                      height: size,
-                      borderRadius: ballRadius,
-                      backgroundColor: ballColor(ball.id),
-                      borderColor: ball.isCue ? '#ffffff' : 'rgba(0,0,0,0.35)'
-                    }
-                  ]}
-                >
-                  {!ball.isCue ? <View style={[styles.highlight, { width: size * 0.3, height: size * 0.3, borderRadius: size * 0.15 }]} /> : null}
-                </View>
-              )
-            })
-          : null}
-      </View>
+    <View style={styles.frame} onLayout={onLayout}>
+      {size > 0 ? rows : null}
     </View>
   )
 }
 
-/** A compact legend pairing each visible colour with its score value is overkill;
- * this is just the empty-state used while a frame has not loaded yet. */
 export function ReplayTablePlaceholder({ label }: { label: string }): ReactNode {
   return (
     <View style={styles.placeholder}>
@@ -78,16 +63,12 @@ export function ReplayTablePlaceholder({ label }: { label: string }): ReactNode 
 }
 
 const styles = StyleSheet.create({
-  rail: {
-    backgroundColor: colors.clothRail,
-    borderRadius: radius.md,
-    padding: RAIL,
-    alignItems: 'center',
-    justifyContent: 'center'
-  },
-  cloth: { backgroundColor: colors.cloth, borderRadius: radius.sm, overflow: 'hidden' },
-  ball: { position: 'absolute', borderWidth: 1 },
-  highlight: { position: 'absolute', top: '22%', left: '22%', backgroundColor: 'rgba(255,255,255,0.55)' },
+  frame: { backgroundColor: '#3b2516', borderRadius: radius.md, padding: 6, alignItems: 'center' },
+  row: { flexDirection: 'row' },
+  cell: { alignItems: 'center', justifyContent: 'center' },
+  piece: { textAlign: 'center' },
+  white: { color: '#fdfcf8', textShadowColor: '#000', textShadowRadius: 2, textShadowOffset: { width: 0, height: 0 } },
+  black: { color: '#1c1c1f' },
   placeholder: {
     height: 160,
     alignItems: 'center',

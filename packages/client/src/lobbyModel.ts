@@ -72,8 +72,7 @@ const ICONS = {
  * pictures - but they are *drawn*, in the same way the bar icons are drawn, rather than
  * loaded: no file to fetch, nothing to letterbox, no second image slot to keep in step, and
  * the halo is a gradient rather than a blur so the card spends one filter on the glass and
- * one on nothing at all. `src/ui/multiplayerArt.svg` is kept on disk deliberately: it is the
- * only piece of the old card art that was ever drawn, and the file is not the problem.
+ * one on nothing at all.
  */
 const EMBLEMS = {
   /** Practice: a sight. Concentric rings, crosshair ticks, one bull. */
@@ -242,8 +241,8 @@ export interface DifficultySpec {
 export const DIFFICULTIES: readonly DifficultySpec[] = PRACTICE_AI_LEVELS.map((level) => {
   const spec: Record<PracticeAiLevel, { label: string; blurb: string }> = {
     EASY: { label: 'Easy', blurb: 'The robot misses a lot. Good for learning the table.' },
-    MEDIUM: { label: 'Medium', blurb: 'A real opponent. Clear the reds if you can.' },
-    HARD: { label: 'Hard', blurb: 'It will not give you an easy frame.' }
+    MEDIUM: { label: 'Medium', blurb: 'A real opponent. Punishes loose pieces.' },
+    HARD: { label: 'Hard', blurb: 'It looks three moves ahead. Bring your best game.' }
   }
   return { level, ...spec[level] }
 })

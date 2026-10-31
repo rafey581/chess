@@ -37,14 +37,14 @@ export const PHASE_ORDER: readonly LoadPhase[] = [
 ]
 
 export const STATUS_FOR_PHASE: Record<LoadPhase, string> = {
-  fonts: 'LOADING THE TABLE',
-  network: 'LOADING THE TABLE',
-  scene: 'BUILDING THE ARENA',
-  textures: 'UPLOADING TEXTURES',
-  shaders: 'COMPILING LIGHTS',
-  bakes: 'COMPILING LIGHTS',
-  audio: 'WARMING UP THE CAMERA',
-  warmup: 'WARMING UP THE CAMERA'
+  fonts: 'LOADING THE BOARD',
+  network: 'FINDING YOUR SEAT',
+  scene: 'SETTING UP THE PIECES',
+  textures: 'SETTING UP THE PIECES',
+  shaders: 'WINDING THE CLOCKS',
+  bakes: 'WINDING THE CLOCKS',
+  audio: 'ALMOST READY',
+  warmup: 'ALMOST READY'
 }
 
 const WEIGHT_SUM = PHASE_ORDER.reduce((n, p) => n + PHASE_WEIGHTS[p], 0)
