@@ -15,8 +15,7 @@ both apps have the server's address built in, so the server comes first.
 | Player app "Chess Stake" (`com.snookerx.game`) | Players' phones (APK) and optionally the web | Vite + Capacitor, built on your PC |
 | Staff app "Chess Admin" (`com.snookerarena.admin`) | Staff phones (APK) | Expo, built in the cloud by EAS |
 
-All current work is on the branch **`merge/friend-changes`**. Use that branch (or `main`
-once it has been merged there).
+All current work is on the **`main`** branch of `https://github.com/rafey581/chess`.
 
 ---
 
@@ -60,7 +59,6 @@ sudo usermod -aG docker $USER && newgrp docker
 ### 1.3 Get the code and build
 ```bash
 git clone https://github.com/rafey581/chess.git snooker && cd snooker
-git checkout merge/friend-changes
 pnpm install
 pnpm build          # shared -> server (prisma generate + tsc) -> client web build
 ```
@@ -160,7 +158,7 @@ Built on your own computer.
 ### 2.1 One-time setup
 - Install **Android Studio** (it brings the Android SDK; the app targets SDK 35) and
   Node 20 + pnpm.
-- `git clone https://github.com/rafey581/model.git && cd model && git checkout merge/friend-changes`
+- `git clone https://github.com/rafey581/chess.git && cd chess`
 
 ### 2.2 Point it at the server
 Edit `packages/client/.env.app` if the server moves. It is set to `http://54.252.128.235:4000`;
