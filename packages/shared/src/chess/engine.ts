@@ -46,13 +46,21 @@ export interface ChessMove {
   enPassant?: boolean
 }
 
+/**
+ * How a game stands after a move, following the FIDE Laws of Chess.
+ *
+ * Only the results the Laws apply automatically are produced by `gameResult`:
+ * checkmate (5.1.1), stalemate (5.2.1), dead position (5.2.2), fivefold repetition
+ * (9.6.1) and the 75-move rule (9.6.2). Threefold repetition and the fifty-move rule
+ * (9.2, 9.3) are draws a player must claim; see `claimableDraw`.
+ */
 export type ChessResult =
   | 'PLAYING'
   | 'CHECKMATE'
   | 'STALEMATE'
-  | 'DRAW_FIFTY_MOVE'
-  | 'DRAW_REPETITION'
   | 'DRAW_MATERIAL'
+  | 'DRAW_FIVEFOLD'
+  | 'DRAW_SEVENTY_FIVE_MOVE'
 
 export const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
 
@@ -447,17 +455,63 @@ export function toSan(pos: ChessPosition, move: ChessMove): string {
 }
 
 /**
- * The state of the game after the last move. Checkmate and stalemate come from the side
- * to move having no legal move; the draws are applied automatically, so no player has
- * to claim one.
+ * The state of the game after the last move: only the endings the Laws apply on their
+ * own, with no player having to claim anything. Checkmate takes precedence (9.6).
  */
 export function gameResult(pos: ChessPosition, history: readonly string[] = []): ChessResult {
   if (legalMoves(pos).length === 0) return inCheck(pos) ? 'CHECKMATE' : 'STALEMATE'
   if (insufficientMaterial(pos.board)) return 'DRAW_MATERIAL'
-  if (pos.halfmove >= 100) return 'DRAW_FIFTY_MOVE'
+  if (pos.halfmove >= 150) return 'DRAW_SEVENTY_FIVE_MOVE'
+  const key = positionKey(pos)
+  if (history.filter((k) => k === key).length >= 5) return 'DRAW_FIVEFOLD'
+  return 'PLAYING'
+}
+
+export type DrawClaim = 'DRAW_REPETITION' | 'DRAW_FIFTY_MOVE'
+
+/**
+ * A draw the player to move may claim right now (FIDE 9.2, 9.3): the current position
+ * has appeared at least three times, or the last fifty moves by each side had no pawn
+ * move and no capture. Null when there is nothing to claim.
+ */
+export function claimableDraw(pos: ChessPosition, history: readonly string[] = []): DrawClaim | null {
   const key = positionKey(pos)
   if (history.filter((k) => k === key).length >= 3) return 'DRAW_REPETITION'
-  return 'PLAYING'
+  if (pos.halfmove >= 100) return 'DRAW_FIFTY_MOVE'
+  return null
+}
+
+/**
+ * Whether `color` could still checkmate the other king by any series of legal moves
+ * (FIDE 6.9): decides whether a flag fall loses or draws.
+ *
+ * A lone king never can. A king and a single knight or bishop can only mate with the
+ * help of the other side's own pieces blocking its king, so it counts as able to mate
+ * unless the other side has nothing but its king (and, for bishops, nothing but
+ * bishops on the same colour squares, which is a dead position anyway).
+ */
+export function canStillCheckmate(board: Array<Piece | null>, color: ChessColor): boolean {
+  const own: Array<{ type: PieceType; square: number }> = []
+  const other: Array<{ type: PieceType; square: number }> = []
+  for (let s = 0; s < 64; s++) {
+    const p = board[s]
+    if (!p || typeOf(p) === 'k') continue
+    ;(colorOf(p) === color ? own : other).push({ type: typeOf(p), square: s })
+  }
+  if (own.length === 0) return false
+  if (own.some((m) => m.type === 'p' || m.type === 'r' || m.type === 'q')) return true
+  if (own.length >= 2 && !own.every((m) => m.type === 'b')) return true
+  const shade = (sq: number): number => ((sq & 7) + (sq >> 3)) & 1
+  if (own.every((m) => m.type === 'b')) {
+    const first = shade(own[0]!.square)
+    const ownOneShade = own.every((m) => shade(m.square) === first)
+    if (!ownOneShade) return true
+    // Bishops on one shade can only mate if the other side has something to block with
+    // that can stand on the other shade (anything but bishops of that same shade).
+    return other.some((m) => m.type !== 'b' || shade(m.square) !== first)
+  }
+  // A single knight: mate needs a blocker from the other side.
+  return other.length > 0
 }
 
 export const moveToInput = (m: ChessMove): ChessMoveInput => ({

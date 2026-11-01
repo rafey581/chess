@@ -444,7 +444,7 @@ export function mountGamingLobby(host: HTMLElement, bridge: LobbyBridge): LobbyS
     try {
       if (mode === 'ai') {
         bridge.setPracticeDifficulty(difficulty)
-        await bridge.startPractice(difficulty)
+        await bridge.startPractice(difficulty, format)
       } else {
         const tier = stakeTierId ?? bridge.getDefaultStakeTierId()
         if (!tier) {

@@ -76,9 +76,13 @@ export function stepAt(events: ReplayEvent[], step: number): ReplayStep {
 const RESULT_TEXT: Record<string, string> = {
   CHECKMATE: 'checkmate',
   STALEMATE: 'stalemate',
-  DRAW_FIFTY_MOVE: 'draw (fifty-move rule)',
-  DRAW_REPETITION: 'draw (repetition)',
-  DRAW_MATERIAL: 'draw (insufficient material)',
+  DRAW_MATERIAL: 'draw (dead position)',
+  DRAW_FIVEFOLD: 'draw (fivefold repetition)',
+  DRAW_SEVENTY_FIVE_MOVE: 'draw (75-move rule)',
+  DRAW_FIFTY_MOVE: 'draw claimed (fifty-move rule)',
+  DRAW_REPETITION: 'draw claimed (threefold repetition)',
+  DRAW_AGREED: 'draw agreed',
+  DRAW_TIMEOUT_MATERIAL: 'draw (flag fell, opponent could not mate)',
   TIMEOUT: 'lost on time',
   RESIGN: 'resignation'
 }
@@ -94,6 +98,16 @@ export function eventLabel(event: ReplayEvent): string {
       const how = RESULT_TEXT[String(d.result)] ?? String(d.result ?? 'game over')
       return d.winnerSeat === null || d.winnerSeat === undefined ? `game drawn: ${how}` : `game won by ${seat(d.winnerSeat)}: ${how}`
     }
+    case 'RESIGN':
+      return `${seat(d.bySeat)} resigned the game`
+    case 'DRAW_OFFER':
+      return `${seat(d.bySeat)} offered a draw`
+    case 'DRAW_ACCEPTED':
+      return `${seat(d.bySeat)} accepted the draw`
+    case 'DRAW_DECLINED':
+      return `${seat(d.bySeat)} declined the draw`
+    case 'DRAW_CLAIMED':
+      return `${seat(d.bySeat)} claimed a draw`
     case 'MATCH_END':
       return `match won by ${seat(d.winnerSeat)} (${String(d.reason ?? '')})`
     default:

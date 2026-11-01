@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { prisma } from '../db/index.js'
 import { createOneVsOneMatch, joinOneVsOneMatch, MatchError, createPracticeMatch, settleMatch } from './service.js'
-import { STAKE_TIERS, STAKE_TIER_IDS, PRACTICE_AI_LEVELS } from '@snooker/shared'
+import { STAKE_TIERS, STAKE_TIER_IDS, PRACTICE_AI_LEVELS, SELECTABLE_FORMATS } from '@snooker/shared'
 
 const createMatchSchema = z.object({
   stakeTier: z.enum(STAKE_TIER_IDS),
@@ -10,7 +10,9 @@ const createMatchSchema = z.object({
 })
 
 const practiceSchema = z.object({
-  aiLevel: z.enum(PRACTICE_AI_LEVELS).default('MEDIUM')
+  aiLevel: z.enum(PRACTICE_AI_LEVELS).default('MEDIUM'),
+  // Single game or best of 3, chosen by the player.
+  format: z.enum(SELECTABLE_FORMATS).default('BO1')
 })
 
 const joinMatchSchema = z.object({
@@ -105,7 +107,7 @@ export async function registerMatchRoutes(app: FastifyInstance): Promise<void> {
     const parsed = practiceSchema.safeParse(request.body ?? {})
     if (!parsed.success) return reply.code(400).send({ ok: false, error: 'invalid input' })
     try {
-      const match = await createPracticeMatch(request.authUser!.id, parsed.data.aiLevel, 'BO1')
+      const match = await createPracticeMatch(request.authUser!.id, parsed.data.aiLevel, parsed.data.format)
       return reply.send({ ok: true, data: match })
     } catch (error) {
       if (error instanceof MatchError) return reply.code(400).send({ ok: false, error: error.message })

@@ -28,7 +28,7 @@ export const SETUP_COPY = {
   onlineTitle: 'ONLINE',
   onlineDesc: 'play against a real opponent',
   difficultyLabel: 'AI DIFFICULTY',
-  lengthLabel: 'MATCH LENGTH',
+  lengthLabel: 'GAME TYPE',
   stakeLabel: 'STAKE',
   tableLabel: 'TABLE',
   tableOpen: 'OPEN TABLE',
@@ -43,16 +43,16 @@ export const SETUP_COPY = {
   friendPickLabel: 'WHICH FRIEND',
   friendEmpty: 'no friends yet — add one from the FRIENDS screen first',
   // The time control leads the list (setup.ts).
-  facts: ['colours alternate each game', 'draws are replayed'] as const,
+  facts: ['FIDE rules', 'colours by lot, then alternate', '\u00bd point for a draw'] as const,
   panelBrand: 'CHESS STAKE',
   panelBadge: 'LIVE BOARD',
   panelTitle: 'Ready when you are',
   panelBody: 'Confirm the mode and start when you are ready to play.',
   start: 'START MATCH',
   formats: {
-    BO1: { label: 'SINGLE GAME', hint: '1 game' },
-    BO3: { label: 'BEST OF 3', hint: 'first to 2' },
-    BO5: { label: 'BEST OF 5', hint: 'first to 3' }
+    BO1: { label: 'SINGLE GAME', hint: 'one game decides it' },
+    BO3: { label: 'BEST OF 3', hint: 'first to 2 points (\u00bd per draw)' },
+    BO5: { label: 'BEST OF 5', hint: '5 games, 3 points wins' }
   } as const
 }
 
@@ -126,42 +126,42 @@ export const CONTROLS_SECTIONS: readonly NumberedSection[] = [
   },
   {
     title: 'Clocks',
-    body: 'Each player has 5 minutes per game, plus 3 seconds added after every move. Your clock only runs on your turn.'
+    body: 'Each player has 5 minutes per game, plus 3 seconds added after every move. Your clock only runs on your turn, and keeps running if you disconnect.'
   },
   {
     title: 'Board orientation',
     body: 'Your pieces are always at the bottom. When you play black the board is turned round for you.'
   },
   {
-    title: 'Resign, chat and leave',
-    body: 'Use the flag to resign the match, the speech bubble for quick chat, and the door to return to the lobby.'
+    title: 'Resign, draws, chat and leave',
+    body: 'The flag resigns the game (in a longer match you can also forfeit the whole match). The \u00bd button offers a draw; a claim button appears when you may claim one. The speech bubble is quick chat and the door returns to the lobby.'
   }
 ]
 
 export const RULES_SECTIONS: readonly NumberedSection[] = [
   {
+    title: 'FIDE Laws of Chess',
+    body: 'Every game follows the FIDE Laws of Chess. Moves the Laws do not allow cannot be played. White moves first; colours for the first game are decided by lot and then alternate.'
+  },
+  {
     title: 'Winning a game',
-    body: 'Checkmate the opposing king, or win when your opponent runs out of time. White always moves first.'
+    body: 'Checkmate the opposing king, or win when your opponent resigns or runs out of time. If your opponent\'s flag falls but you could not possibly checkmate with any series of legal moves, the game is a draw.'
   },
   {
     title: 'Special moves',
-    body: 'Castling, en passant and pawn promotion are all supported. You cannot castle out of, through or into check.'
+    body: 'Castling (not out of, through or into check), en passant and promotion to a queen, rook, bishop or knight.'
   },
   {
     title: 'Draws',
-    body: 'Stalemate, threefold repetition, the fifty-move rule and insufficient material are drawn automatically. A drawn game scores nothing and is replayed.'
+    body: 'Automatic: stalemate, dead positions, fivefold repetition and 75 moves each without a capture or pawn move. On claim by the player to move: threefold repetition and the fifty-move rule. By agreement: either player may offer a draw; making a move declines it.'
   },
   {
-    title: 'Matches',
-    body: 'A match is a single game, best of three or best of five. Colours alternate every game; the first player to win the required games takes the match.'
+    title: 'Match scoring',
+    body: 'A win scores 1 point, a draw \u00bd, a loss 0. A single game, best of 3 or best of 5: the match ends as soon as one player has more than half the points. A level match is decided by one Armageddon game: white has 5 minutes, black 4 and draw odds, so a draw counts as a win for black.'
   },
   {
     title: 'Clock and disconnects',
-    body: 'If your flag falls you lose the game. If you disconnect, your clock pauses and you have a short grace period to return before the match is awarded to your opponent.'
-  },
-  {
-    title: 'Resigning',
-    body: 'Resigning concedes the whole match, and the stake, to your opponent.'
+    body: 'The clock keeps running if you disconnect. If you are away longer than the reconnect grace period, the match is awarded to your opponent.'
   }
 ]
 

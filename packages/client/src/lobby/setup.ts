@@ -1,4 +1,4 @@
-import { CHESS_CLOCK_MS, CHESS_INCREMENT_MS, MATCH_FORMATS, PRACTICE_AI_LEVELS } from '@snooker/shared'
+import { CHESS_CLOCK_MS, CHESS_INCREMENT_MS, PRACTICE_AI_LEVELS, SELECTABLE_FORMATS } from '@snooker/shared'
 
 /** The time control, e.g. "5+3": minutes per player plus seconds added per move. */
 const TIME_CONTROL = `${CHESS_CLOCK_MS / 60000}+${CHESS_INCREMENT_MS / 1000}`
@@ -73,7 +73,8 @@ export function renderSetup(
   }
 
   // Practice is always BO1 on the server. Online supports BO1 / BO3 / BO5.
-  const formats: MatchFormat[] = state.mode === 'online' ? [...MATCH_FORMATS] : state.mode === 'ai' ? ['BO1'] : []
+  // Game type: a single game or best of 3, for practice and online alike.
+  const formats: MatchFormat[] = state.mode ? [...SELECTABLE_FORMATS] : []
   if (formats.length) {
     left.appendChild(el('div', 'gl-label gl-row-label', SETUP_COPY.lengthLabel))
     const row = el('div', 'gl-chip-row')
@@ -218,7 +219,7 @@ function modeCard(
     const next: SetupState = {
       ...state,
       mode,
-      format: mode === 'ai' ? 'BO1' : state.format
+      format: (SELECTABLE_FORMATS as readonly string[]).includes(state.format) ? state.format : 'BO1'
     }
     actions.onChange(next)
   }
@@ -238,7 +239,7 @@ export function tiersForTable(tiers: LobbyStakeTier[], table: StakeTableChoice):
 function buildSummary(state: SetupState, bridge: LobbyBridge): string {
   if (!state.mode) return 'SELECT A MODE TO BEGIN'
   if (state.mode === 'ai') {
-    return `VS AI / ${state.difficulty} / ${SETUP_COPY.formats.BO1.label} / ${TIME_CONTROL}`
+    return `VS AI / ${state.difficulty} / ${SETUP_COPY.formats[state.format].label} / ${TIME_CONTROL}`
   }
   const fmt = SETUP_COPY.formats[state.format]
   const vs = state.opponent === 'friend' ? (state.friendUsername ?? 'A FRIEND') : 'ANYONE'

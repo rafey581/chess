@@ -206,3 +206,13 @@ export function chooseAiMove(
   }
   return moveToInput(chosen[Math.floor(rand() * chosen.length)]!)
 }
+
+/**
+ * Whether the robot, playing `color`, takes a draw (an offer, or a claim when it is to
+ * move): only when its position is clearly worse than level.
+ */
+export function aiAcceptsDraw(pos: ChessPosition, color: 'w' | 'b'): boolean {
+  const fromSideToMove = evaluatePosition(pos)
+  const forRobot = pos.turn === color ? fromSideToMove : -fromSideToMove
+  return forRobot < -150
+}

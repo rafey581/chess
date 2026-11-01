@@ -134,6 +134,7 @@ Legend: `DONE` = built and verified · `PART` = works but incomplete · `TODO` =
 | 28 | Day 28 — Final review vs Definition of Done + full regression | all | TODO |
 | U1 | U1 Client redesign 1 - A: home screen (single viewport, 3 cards, 5-entry bar), B: pre-practice setup screen | client (+1 shared constant) | DONE - 2 commits (0edb9a9, d1048e6); typecheck clean, client tests 308/308, build green |
 | C1 | C1 Game change: snooker replaced with chess | all | DONE - commit fd69c21 (see C1 section); shared 38, server 132, client 109, admin 33 tests green; e2e 18/18 |
+| C2 | C2 FIDE rules, game-type choice, tournament fix | all | DONE (see C2 section); e2e 43/43 incl. a full 8-player tournament |
 
 > Current focus: **C1 — the game is now chess** (rules engine, clocks, rooms, board UI,
 > practice robot, admin replay). Next planned phase: **Day 28 - Final review vs
@@ -141,6 +142,31 @@ Legend: `DONE` = built and verified · `PART` = works but incomplete · `TODO` =
 ---
 
 ## 6. Completed Sessions (record, for reference)
+
+### C2 · FIDE Laws, game-type choice, tournament check (verified)
+
+Goal: make every game follow the FIDE Laws of Chess, let the player choose single game
+or best of 3, and check the tournament feature end to end.
+
+Built:
+- Draws per FIDE: fivefold/75-move automatic; threefold/fifty-move claimed by the
+  player to move; draw offers (accept, decline, declined by moving, no repeat offers).
+- Flag fall is a draw when the opponent cannot checkmate (6.9); resignation loses the
+  game (forfeiting the whole match is a separate choice); clock keeps running on
+  disconnect; colours by lot.
+- Scoring 1 / ½ / 0 with an Armageddon tie-break (5:00 v 4:00, draw odds to black,
+  +2 s from move 61) instead of replaying drawn games.
+- Game type: Single game / Best of 3 on the setup screen for practice and online
+  (`SELECTABLE_FORMATS`); practice start accepts the format.
+- **Bug fixed (pre-existing):** two tournament matches ending at the same moment
+  overwrote each other's bracket result, so later rounds (the final) were never
+  created. Bracket updates are now queued per tournament; a regression test reproduces
+  the race and fails without the fix.
+
+Verified: shared, server (with DB), client and admin tests green; `pnpm e2e` 43/43
+(staked checkmate + settlement, FIDE draw offer → ½–½ → Armageddon, BO3 practice, full
+8-player BO3 tournament to champion and runner-up); browser check of the game-type
+choice, BO3 practice and a draw offer declined by the robot.
 
 ### C1 · Game change: snooker replaced with chess (verified)
 

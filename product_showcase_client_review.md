@@ -77,14 +77,18 @@ Withdraw / Keep Playing
 All three modes use the same chess rules engine, so how the game plays is
 identical across practice, tournaments and direct matches.
 
-### Real Chess Rules (fully automated)
-- Every piece moves by the official rules; illegal moves are simply not possible.
+### FIDE Chess Rules (fully automated)
+- Every game follows the FIDE Laws of Chess; illegal moves are simply not possible.
 - Castling, en passant and pawn promotion (choose queen, rook, bishop or knight).
 - Check, checkmate and stalemate detected automatically.
-- Draws applied automatically: threefold repetition, fifty-move rule, insufficient material.
-- Loss on time when a player's clock runs out; resignation concedes the match.
-- Match formats: best-of-1, best-of-3, best-of-5. Colours alternate each game; a
-  drawn game is replayed so every match has a winner.
+- Draws as in FIDE: automatic for dead positions, fivefold repetition and the 75-move
+  rule; claimed by the player for threefold repetition and the fifty-move rule; or
+  agreed after a draw offer.
+- Running out of time loses — unless the opponent could not possibly checkmate, then
+  it is a draw. Resigning loses the game.
+- Choose the game type: **single game** or **best of 3**. A win scores 1, a draw ½.
+  Colours are drawn by lot. A level match is decided by an Armageddon game, so every
+  match has a winner.
 - Match winner automatically decided by the server.
 
 ### Game Quality

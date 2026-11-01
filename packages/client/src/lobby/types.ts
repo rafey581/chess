@@ -79,7 +79,7 @@ export interface LobbyBridge {
   fetchMatchHistory: () => Promise<LobbyHistoryMatch[]>
   /** Level, rank, XP and badges; null when it cannot be loaded. */
   fetchProgress: () => Promise<LobbyProgress | null>
-  startPractice: (aiLevel: PracticeAiLevel) => Promise<void>
+  startPractice: (aiLevel: PracticeAiLevel, format?: MatchFormat) => Promise<void>
   /**
    * Opens an online table as a challenge: a public broadcast anyone may accept
    * (no `targetUsername`) or a direct invite to one friend. This does not enter

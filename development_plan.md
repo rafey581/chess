@@ -188,16 +188,28 @@ the mover's clock, records a `MOVE` game event and broadcasts the new snapshot.
   per move (`CHESS_INCREMENT_MS`).
 - Only the side to move's clock runs; the server owns it and sends remaining times
   and a deadline with every board update, so all screens count to the same moment.
-- A flag fall loses the game. A disconnected player's clock is paused; the reconnect
-  grace timer decides the match if they do not return.
+- A flag fall loses the game, unless the opponent could not checkmate by any series of
+  legal moves, in which case it is drawn (FIDE 6.9).
+- The clock keeps running through a disconnection (as in FIDE online events); the
+  reconnect grace timer decides the match if the player does not return.
 
-### Matches (best-of)
-- Formats `BO1 | BO3 | BO5`: first to 1 / 2 / 3 game wins. A game takes the place a
-  frame used to, so match records, settlement and tournaments are unchanged.
-- Colours alternate every game; seat 0 (the table opener, or the human in practice)
-  has white in game 1.
-- A drawn game scores for nobody and is replayed with colours swapped, so a staked
-  match always produces a winner.
+### Matches
+- The player chooses the game type: **Single game (BO1)** or **Best of 3 (BO3)**
+  (`SELECTABLE_FORMATS`; BO5 is still accepted by the server). Tournament matches are BO3.
+- FIDE scoring: 1 a win, ½ a draw, 0 a loss. The match ends as soon as one player has
+  more than half the regulation points.
+- Colours for game 1 are drawn by lot (seeded by the match id), then alternate.
+- A level match is decided by one Armageddon game: white 5:00, black 4:00 and draw
+  odds, +2 s per move from move 61. Every staked match therefore has one winner.
+
+### Draws, resignation (FIDE)
+- Automatic: stalemate, dead position, fivefold repetition, 75-move rule.
+- Claimed by the player to move: threefold repetition, fifty-move rule (only a valid
+  claim is accepted, so no incorrect-claim penalty is needed).
+- Agreement: a player offers; the opponent accepts, declines, or declines by moving.
+  One standing offer at a time; no repeat offer before making another move.
+- Resignation loses the current game; forfeiting the match (`concede`) hands over the
+  whole match and the stake.
 
 ### Renderer (client)
 - DOM/CSS board: CSS grid of squares, Unicode piece glyphs, coordinates on the edge.
@@ -327,11 +339,12 @@ Behaviours (`packages/shared/src/chess/engine.ts`, `match.ts`):
 2. Castling rights tracked and lost when the king or rook moves or a rook is captured.
 3. En-passant square set after a double pawn push; capture removes the passed pawn.
 4. Promotion with explicit piece choice (queen by default).
-5. Game end: checkmate (side to move in check with no legal move), stalemate,
-   insufficient material, fifty-move rule (100 half-moves), threefold repetition
-   (positions compared by placement, side to move, castling rights and a capturable
-   en-passant square). Draws are applied automatically; nobody has to claim them.
-6. Loss on time (flag fall) and resignation (concedes the whole match).
+5. Game end, automatic: checkmate, stalemate, dead position, fivefold repetition and the
+   75-move rule (positions compared by placement, side to move, castling rights and a
+   capturable en-passant square). Claimable by the player to move: threefold repetition
+   and the fifty-move rule. By agreement after an offer.
+6. Loss on time, or a draw when the opponent could not checkmate (6.9); resignation
+   loses the game.
 7. SAN with disambiguation, captures, castling, promotion, check `+` and mate `#`.
 
 The room emits typed game events (`MOVE` with the resulting FEN, `FRAME_END` per game
@@ -463,7 +476,7 @@ model GameEvent {
   id        String   @id @default(cuid())
   matchId   String
   seq       Int
-  type      String   // MOVE (san, from, to, promotion?, fen, bySeat) | FRAME_END (one game: winnerSeat, result) | MATCH_END
+  type      String   // MOVE | RESIGN | DRAW_OFFER | DRAW_ACCEPTED | DRAW_DECLINED | DRAW_CLAIMED | FRAME_END (one game: winnerSeat, result) | MATCH_END
   data      Json
   createdAt DateTime @default(now())
   @@unique([matchId, seq])
@@ -571,7 +584,11 @@ Client -> Server:
 ```
 match:join     {matchId}
 move:play      {matchId, move: {from, to, promotion?}}
-concede        {matchId}             // resign the match
+game:resign    {matchId}             // resign the current game
+draw:offer     {matchId}
+draw:respond   {matchId, accept}
+draw:claim     {matchId}             // player to move: threefold / fifty-move
+concede        {matchId}             // forfeit the whole match
 match:chat     {matchId, phraseId}   // whitelisted quick-chat phrase ids only
 ```
 
@@ -589,7 +606,9 @@ error           {code}
 ```
 
 `snapshot` = `{fen, whiteSeat, turnSeat, moves (SAN), lastMove, inCheck, result,
-winnerSeat, clocksMs}`; `turn` = `{turnDeadlineAt, clocksMs, turnSeat, paused, serverNow}`.
+winnerSeat, clocksMs, armageddon, drawOfferBy, drawClaim}`; `turn` =
+`{turnDeadlineAt, clocksMs, turnSeat, paused, serverNow}`; board-carrying events also
+carry `framesWon` (match points, halves for draws).
 
 Server-authoritative loop:
 1. Receive `move:play`.
@@ -605,7 +624,7 @@ corrected by the next snapshot; a refused move is taken back.
 
 Reconnect/disconnect handling:
 - On disconnect, room marks player `DISCONNECTED`, starts grace timer (`reconnectGraceSec`).
-- Reconnect restores the board and clocks from the current snapshot. The disconnected side's clock is paused during the grace period.
+- Reconnect restores the board and clocks from the current snapshot. The clock keeps running while a player is disconnected.
 - After timeout -> `ABANDONED` -> rules: opponent wins, funds settled per policy (virtual: refund opponent, confiscate abandoner to platform in real-money mode; disabled in dev with REFUND).
 
 ---
@@ -803,7 +822,7 @@ REAL_MONEY_ENABLED=false
 2. Board rendering — decided: DOM/CSS board (no canvas or WebGL needed for chess).
 3. AI opponent — confirmed: required for Practice mode.
 4. Time control — 5+3 for every table today; per-tier or per-match time controls could be added later.
-5. Draw offers between players — not implemented (draws are automatic only); a possible addition.
+5. Draw offers — implemented per FIDE 9.1 (offer, accept, decline by moving).
 
 ---
 

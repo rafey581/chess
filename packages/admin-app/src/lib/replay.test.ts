@@ -45,5 +45,7 @@ describe('eventLabel', () => {
     expect(eventLabel(events[0]!)).toBe('seat 0 played f3')
     expect(eventLabel(events[2]!)).toBe('game won by seat 1: lost on time')
     expect(eventLabel(events[4]!)).toBe('match won by seat 1 (games)')
+    expect(eventLabel({ seq: 9, type: 'DRAW_OFFER', data: { bySeat: 0 } })).toBe('seat 0 offered a draw')
+    expect(eventLabel({ seq: 9, type: 'FRAME_END', data: { winnerSeat: null, result: 'DRAW_AGREED' } })).toBe('game drawn: draw agreed')
   })
 })

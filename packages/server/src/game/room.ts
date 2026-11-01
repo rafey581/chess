@@ -1,8 +1,15 @@
 import type { Server } from 'socket.io'
 import {
+  aiAcceptsDraw,
   applyChessMove,
+  applyDrawClaim,
   applyGameWinner,
+  applyResign,
   applyTimeout,
+  drawClaimFor,
+  offerDraw,
+  respondToDraw,
+  seatColor,
   chessSnapshot,
   createChessMatch,
   matchWinnerIndex,
@@ -99,11 +106,6 @@ export class GameRoom {
     this.socketIds.set(seat, set)
     if (this.disconnectedAt.delete(seat)) {
       this.broadcast('opponent:reconnected', { seat })
-      // The side to move's clock was stopped while they were away; it runs again now.
-      if (this.started) {
-        this.startClock()
-        this.broadcastTurnClock()
-      }
     }
   }
 
@@ -117,13 +119,9 @@ export class GameRoom {
     this.disconnectedAt.set(seat, Date.now())
     this.callbacks.log(`${userId} disconnected from ${this.matchId}`)
     this.broadcast('opponent:disconnected', { seat })
-    // A player who has dropped is not charged for the reconnect grace: the grace timer
-    // in the socket server decides the match if they do not come back.
-    const game = this.match.currentGame
-    if (game && turnSeat(game) === seat) {
-      this.stopClock()
-      this.broadcastTurnClock()
-    }
+    // The clock keeps running through a disconnection, as in FIDE online events: being
+    // connected is the player's responsibility. The grace timer in the socket server
+    // still decides the match if they do not come back in time.
   }
 
   getSeat(userId: string): number | undefined {
@@ -206,7 +204,6 @@ export class GameRoom {
     const game = this.match.currentGame
     if (!game || game.result !== 'PLAYING') return
     const seat = turnSeat(game)
-    if (this.isSeatDisconnected(seat)) return
     this.clockStartedAt = Date.now()
     const remaining = Math.max(0, game.clocksMs[seat] ?? 0)
     this.flagTimer = setTimeout(() => {
@@ -312,7 +309,7 @@ export class GameRoom {
     const winner = game.winnerSeat
     const gameEnd = this.event('FRAME_END', { winnerSeat: winner, result: game.result, moves: game.moves.length })
     this.commit([...preceding, gameEnd])
-    const matchEnded = applyGameWinner(this.match, winner)
+    const matchEnded = applyGameWinner(this.match, winner, game.armageddon)
     await this.callbacks.onFrameEnd(this.matchId, winner, {
       player0: this.match.framesWon[0],
       player1: this.match.framesWon[1]
@@ -329,8 +326,8 @@ export class GameRoom {
     this.nextGameTimer = setTimeout(() => {
       this.nextGameTimer = null
       if (this.stopped) return
-      nextGame(this.match)
-      this.match.currentGame!.clocksMs = [this.clockMs, this.clockMs]
+      const next = nextGame(this.match)
+      if (!next.armageddon) next.clocksMs = [this.clockMs, this.clockMs]
       this.betweenGames = false
       this.startClock()
       this.broadcast('frame:start', { frameIndex: this.match.frameIndex + 1, snapshot: this.snapshot() })
@@ -338,7 +335,94 @@ export class GameRoom {
     }, NEXT_GAME_DELAY_MS)
   }
 
-  /** Resigning concedes the whole match (and the stake) to the opponent. */
+  // ---- resignation and draws (FIDE 5.1.2, 9.1-9.3) --------------------------------
+
+  private actionSeat(userId: string): { seat: number } | { error: string } {
+    const seat = this.seatOfUser.get(userId)
+    if (seat === undefined) return { error: 'not_in_match' }
+    const game = this.match.currentGame
+    if (!this.started || this.stopped || this.betweenGames || !game || game.result !== 'PLAYING') return { error: 'game_not_running' }
+    return { seat }
+  }
+
+  /** Ends the current game after a resignation, claim or agreed draw. */
+  private endByAction(event: GameUpdateEvent): void {
+    void this.endGame([event])
+  }
+
+  /** `userId` resigns the current game; in a match with more games, play goes on. */
+  handleResign(userId: string): { accepted: boolean; error?: string } {
+    const who = this.actionSeat(userId)
+    if ('error' in who) return { accepted: false, error: who.error }
+    const game = this.match.currentGame!
+    this.stopClock()
+    applyResign(game, who.seat)
+    this.endByAction(this.event('RESIGN', { bySeat: who.seat }))
+    return { accepted: true }
+  }
+
+  handleDrawOffer(userId: string): { accepted: boolean; error?: string } {
+    const who = this.actionSeat(userId)
+    if ('error' in who) return { accepted: false, error: who.error }
+    const game = this.match.currentGame!
+    const r = offerDraw(game, who.seat)
+    if (!r.ok) return { accepted: false, error: r.error?.replace(/ /g, '_') }
+    this.commit([this.event('DRAW_OFFER', { bySeat: who.seat })])
+    this.scheduleBotDrawAnswer()
+    return { accepted: true }
+  }
+
+  handleDrawResponse(userId: string, accept: boolean): { accepted: boolean; error?: string } {
+    const who = this.actionSeat(userId)
+    if ('error' in who) return { accepted: false, error: who.error }
+    return this.answerDraw(who.seat, accept)
+  }
+
+  private answerDraw(seat: number, accept: boolean): { accepted: boolean; error?: string } {
+    const game = this.match.currentGame!
+    if (accept) this.stopClock()
+    const r = respondToDraw(game, seat, accept)
+    if (!r.ok) {
+      if (accept) this.startClock()
+      return { accepted: false, error: r.error?.replace(/ /g, '_') }
+    }
+    const event = this.event(accept ? 'DRAW_ACCEPTED' : 'DRAW_DECLINED', { bySeat: seat })
+    if (accept) this.endByAction(event)
+    else this.commit([event])
+    return { accepted: true }
+  }
+
+  handleDrawClaim(userId: string): { accepted: boolean; error?: string } {
+    const who = this.actionSeat(userId)
+    if ('error' in who) return { accepted: false, error: who.error }
+    return this.claimDraw(who.seat)
+  }
+
+  private claimDraw(seat: number): { accepted: boolean; error?: string } {
+    const game = this.match.currentGame!
+    const claim = drawClaimFor(game)
+    if (!claim || turnSeat(game) !== seat) return { accepted: false, error: 'no_draw_to_claim' }
+    this.stopClock()
+    applyDrawClaim(game, seat)
+    this.endByAction(this.event('DRAW_CLAIMED', { bySeat: seat, claim }))
+    return { accepted: true }
+  }
+
+  /** The practice robot answers a draw offer: it takes one only when it is clearly worse. */
+  private scheduleBotDrawAnswer(): void {
+    const game = this.match.currentGame
+    if (this.matchType !== 'PRACTICE' || !game || game.drawOfferBy !== 0) return
+    setTimeout(() => {
+      const g = this.match.currentGame
+      if (this.stopped || g !== game || g.result !== 'PLAYING' || g.drawOfferBy !== 0) return
+      this.answerDraw(1, aiAcceptsDraw(g.position, seatColor(g, 1)))
+    }, BOT_MOVE_DELAY_MS)
+  }
+
+  /**
+   * Forfeits the whole match (and the stake) to the opponent. Kept alongside resigning a
+   * single game so a player can leave a best-of-3/5 without playing the remaining games.
+   */
   handleConcede(userId: string): string | null {
     const seat = this.seatOfUser.get(userId)
     if (seat === undefined || this.stopped) return null
@@ -362,6 +446,11 @@ export class GameRoom {
       this.botTimer = null
       const game = this.match.currentGame
       if (!game || this.stopped || !this.isBotTurn()) return
+      // The robot claims a draw that is available to it when it is clearly worse.
+      if (drawClaimFor(game) && aiAcceptsDraw(game.position, seatColor(game, 1))) {
+        this.claimDraw(1)
+        return
+      }
       const move = computeBotMove(game, level, this.matchId)
       if (move) this.playMove(1, move)
     }, BOT_MOVE_DELAY_MS)
@@ -393,7 +482,7 @@ export class GameRoom {
     if (GameRoom.TIMED_EVENTS.has(event) && payload !== null && typeof payload === 'object') {
       this.callbacks.board
         .to(`match:${this.matchId}`)
-        .emit(event, { ...(payload as Record<string, unknown>), turn: this.turnTiming() })
+        .emit(event, { ...(payload as Record<string, unknown>), turn: this.turnTiming(), framesWon: this.match.framesWon })
       return
     }
     this.callbacks.board.to(`match:${this.matchId}`).emit(event, payload)

@@ -368,6 +368,38 @@ export function createGameServer(app: FastifyInstance, httpServer: HttpServer): 
       if (!result.accepted) socket.emit('error', { code: result.error ?? 'rejected' })
     })
 
+    // Resigning the current game, and the draw procedures (offer, answer, claim). The
+    // room checks seat, turn and that the claim or offer is valid.
+    const roomAction = (
+      event: string,
+      act: (room: GameRoom, payload: Record<string, unknown>) => { accepted: boolean; error?: string }
+    ): void => {
+      socket.on(event, (payload: { matchId?: string } & Record<string, unknown>) => {
+        const matchId = payload?.matchId
+        if (!matchId || typeof matchId !== 'string') {
+          socket.emit('error', { code: 'bad_request' })
+          return
+        }
+        if (!moves.take(socket.id, userId)) {
+          socket.emit('error', { code: 'rate_limited' })
+          return
+        }
+        const room = getOrCreateRoom(matchId)
+        if (!room) {
+          socket.emit('error', { code: 'match_not_found' })
+          return
+        }
+        const result = act(room, payload)
+        if (!result.accepted) socket.emit('error', { code: result.error ?? 'rejected' })
+      })
+    }
+    roomAction('game:resign', (room) => room.handleResign(userId))
+    roomAction('draw:offer', (room) => room.handleDrawOffer(userId))
+    roomAction('draw:respond', (room, p) =>
+      typeof p.accept === 'boolean' ? room.handleDrawResponse(userId, p.accept) : { accepted: false, error: 'bad_request' }
+    )
+    roomAction('draw:claim', (room) => room.handleDrawClaim(userId))
+
     socket.on('concede', (payload: { matchId: string }) => {
       const { matchId } = payload ?? {}
       if (!matchId) {

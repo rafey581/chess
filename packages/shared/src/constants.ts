@@ -11,6 +11,13 @@ export type PracticeAiLevel = (typeof PRACTICE_AI_LEVELS)[number]
 
 export const MATCH_FORMATS = ['BO1', 'BO3', 'BO5'] as const
 export type MatchFormat = (typeof MATCH_FORMATS)[number]
+/**
+ * The game types a player chooses between when starting a match (practice or online):
+ * a single game, or best of 3. BO5 is still accepted by the server and can be offered
+ * again by adding it here.
+ */
+export const SELECTABLE_FORMATS = ['BO1', 'BO3'] as const satisfies readonly MatchFormat[]
+export type SelectableFormat = (typeof SELECTABLE_FORMATS)[number]
 
 export const TOURNAMENT_SIZE = 8
 /** Balance a new account starts with, in USDT (1 USDT = 1 unit). */

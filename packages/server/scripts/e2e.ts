@@ -157,11 +157,14 @@ async function practiceRobot(): Promise<void> {
   const start = waitFor<any>(s, 'match:start')
   s.emit('match:join', { matchId })
   const st = await start
-  check('human plays white in game 1', st.snapshot.whiteSeat === 0)
-  const reply = waitFor<any>(s, 'game:update', (u) => u.frame.moves.length === 2, 8000)
-  s.emit('move:play', { matchId, move: { from: 'e2', to: 'e4' } })
+  const humanWhite = st.snapshot.whiteSeat === 0
+  check('colours drawn by lot (game 1 white seat is 0 or 1)', st.snapshot.whiteSeat === 0 || st.snapshot.whiteSeat === 1)
+  if (!humanWhite) await waitFor<any>(s, 'game:update', (u) => u.frame.moves.length === 1, 8000)
+  const target = humanWhite ? 2 : 3
+  const reply = waitFor<any>(s, 'game:update', (u) => u.frame.moves.length === target, 8000)
+  s.emit('move:play', { matchId, move: humanWhite ? { from: 'e2', to: 'e4' } : { from: 'e7', to: 'e5' } })
   const u = await reply
-  check('robot replied with a move', typeof u.frame.moves[1] === 'string' && u.frame.turnSeat === 0, u.frame.moves)
+  check('robot replied with a move', typeof u.frame.moves[target - 1] === 'string' && u.frame.turnSeat === 0, u.frame.moves)
   const done = await api('/api/practice/resign', { method: 'POST', token: p.token, body: { matchId } })
   check('practice can be finished', done?.ok === true, done)
   s.disconnect()
@@ -190,6 +193,116 @@ async function resignation(): Promise<void> {
   sb.disconnect()
 }
 
+async function drawAndArmageddon(): Promise<void> {
+  console.log('agreed draw in a single game goes to Armageddon; resigning it decides the match')
+  const a = await register('da')
+  const b = await register('db')
+  const sa = await connect(a.token)
+  const sb = await connect(b.token)
+  const ch = await api('/api/challenges', { method: 'POST', token: a.token, body: { stakeTier: 'TIER_1', format: 'BO1' } })
+  const acc = await api(`/api/challenges/${ch.data.id}/accept`, { method: 'POST', token: b.token, body: {} })
+  const matchId: string = acc.data.matchId
+  const joined = waitFor<any>(sa, 'match:joined')
+  sa.emit('match:join', { matchId })
+  const ja = await joined
+  const started = waitFor<any>(sa, 'match:start')
+  sb.emit('match:join', { matchId })
+  await started
+  const offered = waitFor<any>(sb, 'game:update', (u) => u.frame.drawOfferBy === ja.seat)
+  sa.emit('draw:offer', { matchId })
+  await offered
+  check('draw offer reaches the opponent', true)
+  const arm = waitFor<any>(sa, 'frame:start', () => true, 10000)
+  sb.emit('draw:respond', { matchId, accept: true })
+  const f = await arm
+  check('agreed draw scores half a point each', f.framesWon[0] === 0.5 && f.framesWon[1] === 0.5, f.framesWon)
+  check('Armageddon game follows', f.snapshot.armageddon === true)
+  const w = f.snapshot.whiteSeat
+  check('Armageddon clocks 5:00 vs 4:00', f.snapshot.clocksMs[w] === 300000 && f.snapshot.clocksMs[1 - w] === 240000, f.snapshot.clocksMs)
+  const end = waitFor<any>(sb, 'match:end')
+  sa.emit('game:resign', { matchId })
+  const e = await end
+  check('resigning the Armageddon game hands over the match', e.winnerSeat === 1 - ja.seat, e)
+  sa.disconnect()
+  sb.disconnect()
+}
+
+async function practiceBestOfThree(): Promise<void> {
+  console.log('practice with the best-of-3 game type')
+  const p = await register('p3')
+  const r = await api('/api/practice/start', { method: 'POST', token: p.token, body: { aiLevel: 'EASY', format: 'BO3' } })
+  check('best-of-3 practice started', r?.ok === true, r)
+  const m = await api(`/api/matches/${r.data.id}`, { token: p.token })
+  check('practice match stored as BO3', m?.data?.format === 'BO3', m?.data?.format)
+  const bad = await api('/api/practice/start', { method: 'POST', token: p.token, body: { aiLevel: 'EASY', format: 'BO7' } })
+  check('unknown game type refused', bad?.ok === false)
+  await api('/api/practice/resign', { method: 'POST', token: p.token, body: { matchId: r.data.id } })
+}
+
+async function tournament(): Promise<void> {
+  console.log('8-player knockout tournament to a champion')
+  const players = await Promise.all(Array.from({ length: 8 }, (_, i) => register(`t${i}`)))
+  const sockets = await Promise.all(players.map((pl) => connect(pl.token)))
+  const created = await api('/api/tournaments', { method: 'POST', token: players[0]!.token, body: { name: 'E2E Cup' } })
+  check('tournament created', created?.ok === true, created)
+  const tid: string = created.data.id
+  for (const pl of players) {
+    const j = await api('/api/tournaments/join', { method: 'POST', token: pl.token, body: { tournamentId: tid } })
+    if (!j?.ok) check(`join ${pl.username}`, false, j)
+  }
+  const extra = await register('tx')
+  const late = await api('/api/tournaments/join', { method: 'POST', token: extra.token, body: { tournamentId: tid } })
+  check('a ninth player is refused', late?.ok === false, late)
+  let t = (await api(`/api/tournaments/${tid}`, { token: players[0]!.token })).data
+  check('full tournament starts', t.status === 'IN_PROGRESS', t.status)
+  const byUser = new Map(players.map((pl, i) => [pl.username, i]))
+
+  const playMatch = async (match: any, gameByGame: boolean): Promise<void> => {
+    const [p0, p1] = [match.players.find((x: any) => x.seat === 0), match.players.find((x: any) => x.seat === 1)]
+    const s0 = sockets[byUser.get(p0.user.username)!]!
+    const s1 = sockets[byUser.get(p1.user.username)!]!
+    const started = waitFor<any>(s0, 'match:start')
+    s0.emit('match:join', { matchId: match.id })
+    await waitFor<any>(s0, 'match:joined')
+    s1.emit('match:join', { matchId: match.id })
+    const st = await started
+    check(`match ${match.id.slice(-4)} is best of 3`, match.format === 'BO3', match.format)
+    const end = waitFor<any>(s0, 'match:end', () => true, 20000)
+    if (gameByGame) {
+      // Seat 1 resigns game 1, then game 2 after the next game starts: 2-0 to seat 0.
+      const next = waitFor<any>(s0, 'frame:start', () => true, 10000)
+      s1.emit('game:resign', { matchId: match.id })
+      const f = await next
+      check('tournament game 2 starts after a resignation, colours swapped', f.snapshot.whiteSeat !== st.snapshot.whiteSeat && f.framesWon[0] === 1, f.framesWon)
+      s1.emit('game:resign', { matchId: match.id })
+    } else {
+      s1.emit('concede', { matchId: match.id })
+    }
+    const e = await end
+    if (e.winnerSeat !== 0) check('seat 0 wins', false, e)
+  }
+
+  for (let round = 1; round <= 3; round++) {
+    t = (await api(`/api/tournaments/${tid}`, { token: players[0]!.token })).data
+    const open = t.matches.filter((m: any) => m.round === round)
+    check(`round ${round} has ${8 >> round} match(es)`, open.length === 8 >> round, open.length)
+    for (let i = 0; i < open.length; i++) await playMatch(open[i], round === 1 && i === 0)
+    // Settlement and bracket advance run just after match:end.
+    for (let k = 0; k < 40; k++) {
+      t = (await api(`/api/tournaments/${tid}`, { token: players[0]!.token })).data
+      const done = round === 3 ? t.status === 'COMPLETED' : t.matches.filter((m: any) => m.round === round + 1).length === 8 >> (round + 1)
+      if (done) break
+      await new Promise((r) => setTimeout(r, 250))
+    }
+  }
+  check('tournament completed with a champion', t.status === 'COMPLETED' && !!t.championId, { status: t.status, champion: t.championId })
+  check('runner-up recorded', !!t.runnerUpId)
+  const finalMatch = t.matches.find((m: any) => m.round === 3)
+  const finalWinner = finalMatch?.players.find((x: any) => x.seat === 0)?.userId
+  check('champion is the final winner', t.championId === finalWinner)
+  sockets.forEach((s) => s.disconnect())
+}
+
 async function main(): Promise<void> {
   const health = await fetch(`${BASE}/api/health`).then((r) => r.ok).catch(() => false)
   if (!health) {
@@ -199,6 +312,9 @@ async function main(): Promise<void> {
   await stakedCheckmate()
   await practiceRobot()
   await resignation()
+  await drawAndArmageddon()
+  await practiceBestOfThree()
+  await tournament()
   console.log(`\n${passed} passed, ${failures} failed`)
   process.exit(failures === 0 ? 0 : 1)
 }

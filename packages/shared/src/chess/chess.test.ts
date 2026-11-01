@@ -13,13 +13,21 @@ import {
 } from './engine.js'
 import type { ChessPosition } from './engine.js'
 import {
+  ARMAGEDDON_BLACK_MS,
+  ARMAGEDDON_WHITE_MS,
   applyChessMove,
+  applyDrawClaim,
   applyGameWinner,
+  applyResign,
   applyTimeout,
   chessSnapshot,
+  createChessGame,
   createChessMatch,
+  framesToWin,
   matchWinnerIndex,
   nextGame,
+  offerDraw,
+  respondToDraw,
   turnSeat
 } from './match.js'
 import { chooseAiMove } from './ai.js'
@@ -124,24 +132,35 @@ describe('game results', () => {
     expect(gameResult(parseFen('8/8/4k3/8/8/3NK3/8/8 w - - 0 1'))).toBe('DRAW_MATERIAL')
     expect(gameResult(parseFen('8/8/4k3/8/8/3RK3/8/8 w - - 0 1'))).toBe('PLAYING')
   })
-  it('detects the fifty-move rule', () => {
-    expect(gameResult(parseFen('8/8/4k3/8/8/3RK3/8/8 w - - 100 80'))).toBe('DRAW_FIFTY_MOVE')
+  it('the fifty-move rule is a claim, the 75-move rule is automatic', () => {
+    expect(gameResult(parseFen('8/8/4k3/8/8/3RK3/8/8 w - - 100 80'))).toBe('PLAYING')
+    expect(gameResult(parseFen('8/8/4k3/8/8/3RK3/8/8 w - - 150 80'))).toBe('DRAW_SEVENTY_FIVE_MOVE')
+    const game = createChessGame(0)
+    game.position = parseFen('8/8/4k3/8/8/3RK3/8/8 w - - 100 80')
+    game.history = [positionKey(game.position)]
+    expect(chessSnapshot(game).drawClaim).toBe('DRAW_FIFTY_MOVE')
+    expect(applyDrawClaim(game, 1).ok).toBe(false)
+    expect(applyDrawClaim(game, 0).ok).toBe(true)
+    expect(game.result).toBe('DRAW_FIFTY_MOVE')
   })
-  it('detects threefold repetition', () => {
-    const match = createChessMatch('m', 'PRACTICE', 'BO1')
-    const game = match.currentGame!
-    const shuffle = [
-      ['g1', 'f3'], ['g8', 'f6'], ['f3', 'g1'], ['f6', 'g8'],
-      ['g1', 'f3'], ['g8', 'f6'], ['f3', 'g1'], ['f6', 'g8']
-    ] as const
-    shuffle.forEach(([from, to], i) => {
-      const out = applyChessMove(game, turnSeat(game), { from, to })
-      expect(out.ok).toBe(true)
-      if (i < shuffle.length - 1) expect(out.ended).toBe(false)
-    })
+  const shuffle = [['g1', 'f3'], ['g8', 'f6'], ['f3', 'g1'], ['f6', 'g8']] as const
+  it('threefold repetition can be claimed by the player to move, and is not automatic', () => {
+    const game = createChessGame(0)
+    for (let r = 0; r < 2; r++) for (const [from, to] of shuffle) expect(applyChessMove(game, turnSeat(game), { from, to }).ended).toBe(false)
+    expect(game.result).toBe('PLAYING')
+    expect(positionKey(game.position)).toBe(game.history[0])
+    expect(chessSnapshot(game).drawClaim).toBe('DRAW_REPETITION')
+    expect(applyDrawClaim(game, 1).ok).toBe(false)
+    expect(applyDrawClaim(game, 0).ok).toBe(true)
     expect(game.result).toBe('DRAW_REPETITION')
     expect(game.winnerSeat).toBeNull()
-    expect(positionKey(game.position)).toBe(game.history[0])
+  })
+  it('fivefold repetition ends the game automatically', () => {
+    const game = createChessGame(0)
+    let ended = false
+    for (let r = 0; r < 4; r++) for (const [from, to] of shuffle) ended = applyChessMove(game, turnSeat(game), { from, to }).ended!
+    expect(ended).toBe(true)
+    expect(game.result).toBe('DRAW_FIVEFOLD')
   })
 })
 
@@ -162,24 +181,95 @@ describe('match flow', () => {
     expect(game.clocksMs[0]).toBe(before - 8_000)
   })
 
-  it('counts games, alternates colours, and replays draws', () => {
+  it('decides game-1 colours by lot, the same way every time for a match', () => {
+    const whites = new Set(Array.from({ length: 40 }, (_, i) => createChessMatch(`m${i}`, 'X', 'BO1').currentGame!.whiteSeat))
+    expect(whites).toEqual(new Set([0, 1]))
+    expect(createChessMatch('abc', 'X', 'BO3').currentGame!.whiteSeat).toBe(createChessMatch('abc', 'X', 'BO3').currentGame!.whiteSeat)
+  })
+
+  it('scores 1 / ½ / 0 and alternates colours', () => {
     const match = createChessMatch('m', 'ONE_V_ONE', 'BO3')
-    expect(match.currentGame!.whiteSeat).toBe(0)
+    const first = match.currentGame!.whiteSeat
+    expect(framesToWin('BO3')).toBe(2)
     expect(applyGameWinner(match, 0)).toBe(false)
-    expect(nextGame(match).whiteSeat).toBe(1)
+    expect(nextGame(match).whiteSeat).toBe(1 - first)
     expect(applyGameWinner(match, null)).toBe(false)
-    expect(match.framesWon).toEqual([1, 0])
-    expect(nextGame(match).whiteSeat).toBe(0)
+    expect(match.framesWon).toEqual([1.5, 0.5])
+    expect(nextGame(match).whiteSeat).toBe(first)
     expect(applyGameWinner(match, 0)).toBe(true)
     expect(matchWinnerIndex(match)).toBe(0)
   })
 
-  it('a flag fall loses the game', () => {
+  it('a level match goes to Armageddon, where a draw is a win for black', () => {
     const match = createChessMatch('m', 'ONE_V_ONE', 'BO1')
-    applyTimeout(match.currentGame!, 0)
-    const snap = chessSnapshot(match.currentGame!)
-    expect(snap.result).toBe('TIMEOUT')
-    expect(snap.winnerSeat).toBe(1)
+    expect(applyGameWinner(match, null)).toBe(false)
+    const arm = nextGame(match)
+    expect(arm.armageddon).toBe(true)
+    const black = 1 - arm.whiteSeat
+    expect(arm.clocksMs[arm.whiteSeat]).toBe(ARMAGEDDON_WHITE_MS)
+    expect(arm.clocksMs[black]).toBe(ARMAGEDDON_BLACK_MS)
+    expect(offerDraw(arm, arm.whiteSeat).ok).toBe(true)
+    expect(respondToDraw(arm, black, true).ok).toBe(true)
+    expect(arm.result).toBe('DRAW_AGREED')
+    expect(arm.winnerSeat).toBe(black)
+    expect(applyGameWinner(match, arm.winnerSeat, true)).toBe(true)
+    expect(matchWinnerIndex(match)).toBe(black)
+  })
+
+  it('Armageddon has no increment until move 61', () => {
+    const match = createChessMatch('m', 'ONE_V_ONE', 'BO1')
+    applyGameWinner(match, null)
+    const arm = nextGame(match)
+    const before = arm.clocksMs[arm.whiteSeat]!
+    applyChessMove(arm, arm.whiteSeat, { from: 'e2', to: 'e4' }, 1000)
+    expect(arm.clocksMs[arm.whiteSeat]).toBe(before - 1000)
+  })
+
+  it('a flag fall loses the game', () => {
+    const game = createChessGame(0)
+    applyTimeout(game, 0)
+    expect(chessSnapshot(game).result).toBe('TIMEOUT')
+    expect(game.winnerSeat).toBe(1)
+  })
+
+  it('a flag fall is a draw when the opponent cannot possibly checkmate (6.9)', () => {
+    const lone = createChessGame(0)
+    lone.position = parseFen('4k3/8/8/8/8/8/PPPP4/4K3 w - - 0 1')
+    applyTimeout(lone, 0)
+    expect(lone.result).toBe('DRAW_TIMEOUT_MATERIAL')
+    expect(lone.winnerSeat).toBeNull()
+    const knight = createChessGame(0)
+    knight.position = parseFen('4k3/8/8/8/8/8/1n6/4K3 w - - 0 1')
+    applyTimeout(knight, 0)
+    expect(knight.result).toBe('DRAW_TIMEOUT_MATERIAL')
+    const helpmate = createChessGame(0)
+    helpmate.position = parseFen('4k3/8/8/8/8/8/1n6/4KB2 w - - 0 1')
+    applyTimeout(helpmate, 0)
+    expect(helpmate.result).toBe('TIMEOUT')
+  })
+
+  it('resignation loses the game', () => {
+    const game = createChessGame(0)
+    expect(applyResign(game, 1)).toBe(true)
+    expect(game.result).toBe('RESIGN')
+    expect(game.winnerSeat).toBe(0)
+  })
+
+  it('draw offers: one at a time, declined by moving, no repeat before moving again', () => {
+    const game = createChessGame(0)
+    expect(offerDraw(game, 0).ok).toBe(true)
+    expect(offerDraw(game, 1).ok).toBe(false)
+    expect(respondToDraw(game, 0, true).ok).toBe(false)
+    applyChessMove(game, 0, { from: 'e2', to: 'e4' })
+    expect(game.drawOfferBy).toBe(0)
+    applyChessMove(game, 1, { from: 'e7', to: 'e5' })
+    expect(game.drawOfferBy).toBeNull()
+    expect(offerDraw(game, 1).ok).toBe(true)
+    expect(respondToDraw(game, 0, false).ok).toBe(true)
+    expect(offerDraw(game, 1).ok).toBe(false)
+    expect(offerDraw(game, 0).ok).toBe(true)
+    expect(respondToDraw(game, 1, true).ok).toBe(true)
+    expect(game.result).toBe('DRAW_AGREED')
   })
 })
 

@@ -37,27 +37,40 @@ Open tables: **1, 5, 10, 20, 50, 100 USDT**. Master Match: **500, 1000, 2000, 30
 
 ## How a match is played
 
+Games follow the **FIDE Laws of Chess**.
+
 - **Rules** — full chess: castling, en passant, promotion (with a picker), check,
-  checkmate and stalemate. Stalemate, threefold repetition, the fifty-move rule
-  and insufficient material are drawn automatically. The rules engine lives in
+  checkmate, stalemate. Illegal moves cannot be played. The rules engine lives in
   `packages/shared/src/chess/engine.ts` and is checked against standard perft counts.
-- **Formats** — single game (BO1), best of 3 or best of 5. Each game takes the
-  place a frame used to: colours alternate every game (the table opener has white
-  in game 1), and the first player to win the required games takes the match and
-  the stake. A drawn game scores nothing and is replayed.
-- **Clock** — 5 minutes per player per game, plus 3 seconds after every move
-  (`CHESS_CLOCK_MS` / `CHESS_INCREMENT_MS`). Running out of time loses the game.
-  A player who disconnects has their clock paused and gets the reconnect grace
-  period; after that the match is awarded to the opponent, as before.
-- **Resign** — concedes the whole match (and the stake).
-- **Server authority** — clients send `move:play { from, to, promotion? }`; the
-  room validates turn and legality, runs the clocks and broadcasts the position
-  (FEN, SAN move list, last move, clocks). Every move is stored as a `MOVE`
-  game event carrying the resulting FEN, which drives the admin replay.
-- **Practice robot** — alpha-beta search over material and piece-square tables
-  (`packages/shared/src/chess/ai.ts`). EASY looks 1 ply ahead and often blunders,
-  MEDIUM 2 plies, HARD 3 plies, each within a ~350 ms budget so it never stalls
-  the game server.
+- **Draws** — automatic: stalemate, dead position (insufficient material), fivefold
+  repetition and the 75-move rule. **Claimed** by the player to move: threefold
+  repetition and the fifty-move rule (a "Claim draw" button appears when a claim is
+  valid). **By agreement**: either player may offer a draw; making a move declines it,
+  and an offer cannot be repeated before making another move.
+- **Game type** — the player chooses **Single game** or **Best of 3** (practice and
+  online). Scoring is 1 for a win, ½ for a draw, 0 for a loss; the match ends as soon as
+  one player has more than half the points. Colours for game 1 are drawn **by lot**,
+  then alternate. A level match goes to one **Armageddon** game (white 5:00, black 4:00
+  with draw odds, +2 s per move from move 61), so every staked match has a winner. BO5
+  is still accepted by the server (`SELECTABLE_FORMATS` controls what is offered).
+- **Clock** — 5 minutes per player per game plus 3 seconds after every move
+  (`CHESS_CLOCK_MS` / `CHESS_INCREMENT_MS`). A flag fall loses, unless the opponent could
+  not checkmate by any series of legal moves, in which case it is a draw (FIDE 6.9).
+  The clock keeps running if a player disconnects (as in FIDE online events); after the
+  reconnect grace period the match is awarded to the opponent.
+- **Resign / forfeit** — resigning loses the current game (FIDE 5.1.2); in a best of 3
+  a player may instead forfeit the whole match and the stake.
+- **Server authority** — clients send `move:play { from, to, promotion? }`,
+  `game:resign`, `draw:offer`, `draw:respond { accept }`, `draw:claim` and `concede`
+  (forfeit match). The room validates everything, runs the clocks and broadcasts the
+  position (FEN, SAN move list, last move, clocks, draw offer/claim state, match
+  points). Every move and draw action is stored as a game event for the admin replay.
+- **Practice robot** — alpha-beta search (`packages/shared/src/chess/ai.ts`): EASY 1
+  ply with frequent random moves, MEDIUM 2 plies, HARD 3 plies, each within ~350 ms. It
+  accepts or claims a draw only when it is clearly worse.
+- **Tournaments** — 8-player knockout, every match best of 3. Bracket updates for a
+  tournament are processed one at a time, so matches finishing together cannot lose a
+  result.
 
 The stake ceiling is an admin setting (`maxStake`, default 5000). A database set up with
 the old default of 10 refuses every table above 10 USDT until it is raised in the admin

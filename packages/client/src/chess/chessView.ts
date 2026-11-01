@@ -30,10 +30,20 @@ export interface ChessClockTiming {
 }
 
 export interface ChessViewMeta {
+  /** Match points: 1 a win, ½ a draw. */
   framesWon: [number, number]
   frameIndex: number
   format: string
   practice: boolean
+  /** The current game is the Armageddon tie-break. */
+  armageddon?: boolean
+}
+
+/** 1.5 -> "1½". */
+export function formatPoints(points: number): string {
+  const whole = Math.floor(points)
+  const half = points - whole >= 0.5
+  return half ? (whole === 0 ? '½' : `${whole}½`) : String(whole)
 }
 
 export interface ChessPlayerInfo {
@@ -218,10 +228,12 @@ export function createChessView(options: ChessViewOptions): ChessView {
     oppCard.setActive(snap?.result === 'PLAYING' && turn === oppSeat)
     youCard.setScore(meta.practice ? null : meta.framesWon[mySeat] ?? 0)
     oppCard.setScore(meta.practice ? null : meta.framesWon[oppSeat] ?? 0)
-    const need = meta.format === 'BO5' ? 3 : meta.format === 'BO3' ? 2 : 1
-    title.textContent = meta.practice
-      ? 'Practice'
-      : `Game ${meta.frameIndex} · first to ${need} win${need === 1 ? '' : 's'}`
+    const games = meta.format === 'BO5' ? 5 : meta.format === 'BO3' ? 3 : 1
+    title.textContent = meta.armageddon || snap?.armageddon
+      ? 'Armageddon \u00b7 draw = black wins'
+      : games === 1
+        ? meta.practice ? 'Practice' : 'Single game'
+        : `${meta.practice ? 'Practice \u00b7 ' : ''}Game ${Math.min(meta.frameIndex, games)} of ${games}`
     renderClocks()
   }
 
@@ -533,8 +545,8 @@ function playerCard(): PlayerCard {
     },
     setScore(value) {
       score.hidden = value === null
-      score.textContent = value === null ? '' : String(value)
-      score.title = 'Games won'
+      score.textContent = value === null ? '' : formatPoints(value)
+      score.title = 'Match points (1 a win, \u00bd a draw)'
     },
     setClock(ms) {
       clock.textContent = ms === null ? '--:--' : formatClock(ms)

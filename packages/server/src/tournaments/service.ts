@@ -103,7 +103,32 @@ export async function createTournamentMatch(
   return { id: match.id }
 }
 
+/**
+ * Bracket updates for one tournament run one at a time.
+ *
+ * Each update reads the bracket, records a result and writes the bracket back. Two
+ * matches finishing a few milliseconds apart used to interleave those steps, so the
+ * second write overwrote the first result and the next round (eventually the final)
+ * was never created. The server runs as a single process, so a per-tournament queue
+ * is enough to make the read-modify-write safe.
+ */
+const advanceQueues = new Map<string, Promise<void>>()
+
 export async function advanceTournamentAfterMatch(matchId: string, winnerUserId: string): Promise<void> {
+  const owner = await prisma.match.findUnique({ where: { id: matchId }, select: { tournamentId: true } })
+  const tournamentId = owner?.tournamentId
+  if (!tournamentId) return
+  const previous = advanceQueues.get(tournamentId) ?? Promise.resolve()
+  const run = previous.catch(() => undefined).then(() => advanceTournamentNow(matchId, winnerUserId))
+  advanceQueues.set(tournamentId, run)
+  try {
+    await run
+  } finally {
+    if (advanceQueues.get(tournamentId) === run) advanceQueues.delete(tournamentId)
+  }
+}
+
+async function advanceTournamentNow(matchId: string, winnerUserId: string): Promise<void> {
   const match = await prisma.match.findUnique({
     where: { id: matchId },
     include: { tournament: { include: { players: true } } }

@@ -2,7 +2,7 @@ import './styles.css'
 import { api, clearStoredToken, connectSocket, disconnectSocket, FAST_TIMEOUT_MS, getSocket, makeToast, readStoredToken, storeToken } from './game/network.js'
 import { openSupportChat, refreshSupportChat } from './support.js'
 import type { ChessSnapshot, ChessMoveInput } from '@snooker/shared'
-import { APP_TITLE, describeGameEnd, MATCH_CHAT_MAX_LOG, MATCH_CHAT_PHRASES, matchChatPhraseText, STAKE_TIERS, xpForMatch } from '@snooker/shared'
+import { APP_TITLE, describeGameEnd, isDrawResult, MATCH_CHAT_MAX_LOG, MATCH_CHAT_PHRASES, matchChatPhraseText, STAKE_TIERS, xpForMatch } from '@snooker/shared'
 import type { MatchFormat, PracticeAiLevel } from '@snooker/shared'
 import { createAvatarBadge } from './game/avatar.js'
 import {
@@ -36,7 +36,7 @@ import { getDeviceId } from './deviceId.js'
 import { askForDateOfBirthIfMissing } from './dobPrompt.js'
 import { receiveAnnouncement, resetAnnouncements, setAnnouncements, showNextAnnouncement, type Announcement } from './announcements.js'
 import './tournaments.css'
-import { createChessView, type ChessClockTiming, type ChessView } from './chess/chessView.js'
+import { createChessView, formatPoints, type ChessClockTiming, type ChessView } from './chess/chessView.js'
 
 const app = document.querySelector<HTMLDivElement>('#app')!
 const toast = makeToast(document.body)
@@ -524,6 +524,7 @@ function leaveGameState(): void {
   chatLogEl = null
   chessView?.destroy()
   chessView = null
+  drawBarEl = null
 }
 
 function opponentName(): string {
@@ -572,7 +573,7 @@ function updateHud(): void {
     { name: currentUser?.username ?? 'You' },
     { name: opponentName(), isBot: activeMatchIsPractice, avatarUrl: activeMatchIsPractice ? '/bot.png' : null }
   )
-  chessView.setMeta({ framesWon, frameIndex, format: matchFormat, practice: activeMatchIsPractice })
+  chessView.setMeta({ framesWon, frameIndex, format: matchFormat, practice: activeMatchIsPractice, armageddon: chessSnap?.armageddon })
 }
 
 /**
@@ -898,11 +899,80 @@ function confirmAction(title: string, message: string, okLabel: string, onOk: ()
   showOverlay(box)
 }
 
+/**
+ * Resigning loses the current game (FIDE 5.1.2). In a best-of-3 or best-of-5 the player
+ * may instead forfeit the whole match, which hands the opponent the match and the stake
+ * without playing the remaining games.
+ */
 function askConcede(): void {
   if (!activeMatchId) return
-  confirmAction('Concede match?', 'Your stake is forfeited to the opponent. Are you sure?', 'Concede', () => {
-    getSocket().emit('concede', { matchId: activeMatchId })
-  })
+  const matchId = activeMatchId
+  const single = matchFormat === 'BO1' || chessSnap?.armageddon
+  const box = card(single ? 'Resign?' : 'Resign or forfeit?')
+  box.appendChild(
+    el(
+      'div',
+      undefined,
+      single
+        ? 'You lose this game, the match and your stake.'
+        : 'Resigning loses this game and the match carries on. Forfeiting hands your opponent the whole match and your stake.'
+    )
+  )
+  const row = el('div', 'row')
+  const cancelBtn = el('button', 'ghost', 'Cancel')
+  cancelBtn.onclick = () => removeOverlay()
+  const resignBtn = el('button', 'danger', single ? 'Resign' : 'Resign game')
+  resignBtn.onclick = () => {
+    removeOverlay()
+    getSocket().emit('game:resign', { matchId })
+  }
+  row.append(cancelBtn, resignBtn)
+  if (!single) {
+    const forfeitBtn = el('button', 'danger', 'Forfeit match')
+    forfeitBtn.onclick = () => {
+      removeOverlay()
+      getSocket().emit('concede', { matchId })
+    }
+    row.appendChild(forfeitBtn)
+  }
+  box.appendChild(row)
+  showOverlay(box)
+}
+
+/** Draw offer / answer / claim, shown over the board when there is something to act on. */
+let drawBarEl: HTMLElement | null = null
+function syncDrawUi(): void {
+  const holder = drawBarEl
+  if (!holder) return
+  holder.replaceChildren()
+  const snap = chessSnap
+  if (!snap || snap.result !== 'PLAYING' || mySeat === undefined || !activeMatchId) {
+    holder.hidden = true
+    return
+  }
+  const matchId = activeMatchId
+  const button = (label: string, cls: string, onClick: () => void): HTMLButtonElement => {
+    const b = el('button', cls, label) as HTMLButtonElement
+    b.type = 'button'
+    b.onclick = onClick
+    return b
+  }
+  if (snap.drawOfferBy !== null && snap.drawOfferBy !== mySeat) {
+    holder.append(
+      el('span', 'draw-bar__text', `${opponentName()} offers a draw${snap.armageddon ? ' (a draw means black wins)' : ''}`),
+      button('Accept', 'draw-bar__btn is-yes', () => getSocket().emit('draw:respond', { matchId, accept: true })),
+      button('Decline', 'draw-bar__btn', () => getSocket().emit('draw:respond', { matchId, accept: false }))
+    )
+  } else if (snap.drawOfferBy === mySeat) {
+    holder.append(el('span', 'draw-bar__text', 'Draw offered \u2014 waiting for your opponent'))
+  } else if (snap.drawClaim && snap.turnSeat === mySeat) {
+    const why = snap.drawClaim === 'DRAW_REPETITION' ? 'threefold repetition' : 'fifty-move rule'
+    holder.append(
+      el('span', 'draw-bar__text', `You may claim a draw (${why})`),
+      button('Claim draw', 'draw-bar__btn is-yes', () => getSocket().emit('draw:claim', { matchId }))
+    )
+  }
+  holder.hidden = holder.childElementCount === 0
 }
 
 async function finishPractice(): Promise<void> {
@@ -1191,14 +1261,16 @@ async function finishMatch(winnerSeat: number, reason?: string): Promise<void> {
       cell.appendChild(el('span', 'end-side-name', name))
       const value = el('span', 'end-side-points', '0')
       cell.appendChild(value)
-      countUp(value, points)
+      // Half points (a drawn game) are written as they are; whole numbers count up.
+      if (Number.isInteger(points)) countUp(value, points)
+      else value.textContent = formatPoints(points)
       return cell
     }
     board.appendChild(side(myName, mine, iWon))
     board.appendChild(el('span', 'end-score-dash', '–'))
     board.appendChild(side(theirName, theirs, !iWon))
     box.appendChild(board)
-    box.appendChild(el('div', 'end-margin', 'Games won'))
+    box.appendChild(el('div', 'end-margin', 'Match points \u00b7 1 a win, \u00bd a draw' + (chessSnap?.armageddon ? ' \u00b7 decided by Armageddon' : '')))
   }
   const finalResult = chessSnap?.result
   if (finalResult && finalResult !== 'PLAYING' && reason !== 'concede' && reason !== 'abandon') {
@@ -1435,14 +1507,14 @@ function createLobbyBridge(): LobbyBridge {
       }
     },
     fetchProgress,
-    startPractice: async (aiLevel) => {
+    startPractice: async (aiLevel, format = 'BO1') => {
       practiceDifficulty = aiLevel
       if (!USE_LOADING_SCREEN) {
-        const data = await api<{ id: string }>('/practice/start', { method: 'POST', body: { aiLevel } })
+        const data = await api<{ id: string }>('/practice/start', { method: 'POST', body: { aiLevel, format } })
             enterMatch(data.id, true)
         return
       }
-      await startPracticeWithLoadingScreen(aiLevel)
+      await startPracticeWithLoadingScreen(aiLevel, format)
     },
     startOnlineChallenge: async (opts) => {
       // Opening a table is now a challenge: the server broadcasts it to every
@@ -2372,7 +2444,7 @@ async function profileStatsCard(): Promise<HTMLElement> {
  * does not share this screen — it enters the match directly from the challenge
  * layer once the table is taken.
  */
-async function startPracticeWithLoadingScreen(aiLevel: PracticeAiLevel): Promise<void> {
+async function startPracticeWithLoadingScreen(aiLevel: PracticeAiLevel, format: MatchFormat = 'BO1'): Promise<void> {
   const loading = showMatchLoading({ modeLabel: 'VS AI' })
   const perf = new URLSearchParams(location.search).has('perf')
   const phaseMs: Partial<Record<LoadPhase | 'total', number>> = {}
@@ -2399,7 +2471,7 @@ async function startPracticeWithLoadingScreen(aiLevel: PracticeAiLevel): Promise
     const tNet = performance.now()
     let matchId: string
     try {
-      const data = await api<{ id: string }>('/practice/start', { method: 'POST', body: { aiLevel } })
+      const data = await api<{ id: string }>('/practice/start', { method: 'POST', body: { aiLevel, format } })
       matchId = data.id
       loading.report('network', 1)
       phaseMs.network = performance.now() - tNet
@@ -2472,6 +2544,11 @@ function renderGame(): void {
   const oppHolder = el('div')
   oppHolder.id = 'opp-holder'
   view.overlayRoot.appendChild(oppHolder)
+  const drawBar = el('div', 'draw-bar')
+  drawBar.setAttribute('role', 'status')
+  drawBar.hidden = true
+  view.overlayRoot.appendChild(drawBar)
+  drawBarEl = drawBar
 
   const tool = (mount: HTMLElement, label: string, mark: string) => {
     const btn = el('button', 'hud-tool hud-glass') as HTMLButtonElement
@@ -2517,6 +2594,11 @@ function renderGame(): void {
     soundBtn.setAttribute('aria-pressed', String(next))
   }
 
+  const drawMark = stroke('<text x="10" y="14.2" text-anchor="middle" font-size="11" font-weight="700" fill="currentColor" stroke="none">\u00bd</text>')
+  const drawBtn = tool(sessionMount, 'Offer a draw', drawMark)
+  drawBtn.onclick = () => {
+    if (activeMatchId) getSocket().emit('draw:offer', { matchId: activeMatchId })
+  }
   const concedeBtn = tool(sessionMount, activeMatchIsPractice ? 'Finish' : 'Resign', flagMark)
   concedeBtn.onclick = () => {
     if (activeMatchIsPractice) void finishPractice()
@@ -2583,6 +2665,8 @@ interface GameUpdatePayload {
   frame: ChessSnapshot
   events?: Array<{ type: string; data: unknown }>
   turn?: ChessClockTiming
+  /** Match points per seat (1 a win, ½ a draw), sent with every board. */
+  framesWon?: [number, number]
 }
 
 let lastTimingStamp = -1
@@ -2594,23 +2678,35 @@ function applyTurnTiming(turn: ChessClockTiming | null | undefined): void {
 
 /** Applies a board from the server and reads out a finished game. */
 function applyGameUpdate(data: GameUpdatePayload): void {
+  const before = chessSnap
   chessSnap = data.frame
+  if (data.framesWon) framesWon = [data.framesWon[0], data.framesWon[1]]
   applyTurnTiming(data.turn)
   chessView?.update(chessSnap)
-  for (const ev of data.events ?? []) {
-    if (ev.type !== 'FRAME_END') continue
-    const d = ev.data as { winnerSeat: number | null; result: string }
-    const how = describeGameEnd(d.result as ChessSnapshot['result'])
-    const text =
-      d.winnerSeat === null || d.winnerSeat === undefined
-        ? `${how} — the game is replayed`
-        : d.result === 'TIMEOUT'
-          ? `${seatName(1 - d.winnerSeat)} lost on time`
-          : `${how} — ${seatName(d.winnerSeat)} ${d.winnerSeat === mySeat ? 'win' : 'wins'}`
-    if (d.winnerSeat === 0 || d.winnerSeat === 1) framesWon[d.winnerSeat] += 1
-    chessView?.announce(text)
-    updateHud()
+  if (data.frame.drawOfferBy !== null && data.frame.drawOfferBy !== mySeat && before?.drawOfferBy !== data.frame.drawOfferBy) {
+    toast(`${opponentName()} offers a draw`)
   }
+  for (const ev of data.events ?? []) {
+    if (ev.type === 'DRAW_DECLINED' && (ev.data as { bySeat?: number }).bySeat !== mySeat) toast('Your draw offer was declined')
+    if (ev.type !== 'FRAME_END') continue
+    const d = ev.data as { winnerSeat: number | null; result: ChessSnapshot['result'] }
+    const how = describeGameEnd(d.result)
+    const drawn = isDrawResult(d.result)
+    const winner = d.winnerSeat === null || d.winnerSeat === undefined ? null : d.winnerSeat
+    const text =
+      winner === null
+        ? `${how} \u2014 \u00bd\u2013\u00bd`
+        : drawn && data.frame.armageddon
+          ? `${how} \u2014 black wins the Armageddon: ${seatName(winner)} ${winner === mySeat ? 'win' : 'wins'}`
+          : d.result === 'TIMEOUT'
+            ? `${seatName(1 - winner)} lost on time`
+            : d.result === 'RESIGN'
+              ? `${seatName(1 - winner)} resigned`
+              : `${how} \u2014 ${seatName(winner)} ${winner === mySeat ? 'win' : 'wins'}`
+    chessView?.announce(`${text}  \u00b7  ${formatPoints(framesWon[mySeat ?? 0] ?? 0)}\u2013${formatPoints(framesWon[1 - (mySeat ?? 0)] ?? 0)}`)
+  }
+  updateHud()
+  syncDrawUi()
 }
 
 function handleSocketEvents(socket: Socket): void {
@@ -2662,18 +2758,22 @@ function handleSocketEvents(socket: Socket): void {
     if (data.snapshot) applyGameUpdate({ frame: data.snapshot, turn: data.turn })
     else applyTurnTiming(data.turn)
   })
-  socket.on('match:start', (data: { snapshot: ChessSnapshot; frameIndex: number; turn?: ChessClockTiming }) => {
+  socket.on('match:start', (data: { snapshot: ChessSnapshot; frameIndex: number; turn?: ChessClockTiming; framesWon?: [number, number] }) => {
     frameIndex = data.frameIndex
     chessView?.announce(null)
-    applyGameUpdate({ frame: data.snapshot, turn: data.turn })
-    updateHud()
+    applyGameUpdate({ frame: data.snapshot, turn: data.turn, framesWon: data.framesWon })
+    toast(`Colours drawn by lot \u2014 you play ${data.snapshot.whiteSeat === mySeat ? 'white' : 'black'}`)
   })
-  socket.on('frame:start', (data: { frameIndex: number; snapshot: ChessSnapshot; turn?: ChessClockTiming }) => {
+  socket.on('frame:start', (data: { frameIndex: number; snapshot: ChessSnapshot; turn?: ChessClockTiming; framesWon?: [number, number] }) => {
     frameIndex = data.frameIndex
     chessView?.announce(null)
-    applyGameUpdate({ frame: data.snapshot, turn: data.turn })
-    updateHud()
-    toast(`Game ${data.frameIndex} — you play ${data.snapshot.whiteSeat === mySeat ? 'white' : 'black'}`)
+    applyGameUpdate({ frame: data.snapshot, turn: data.turn, framesWon: data.framesWon })
+    const colour = data.snapshot.whiteSeat === mySeat ? 'white' : 'black'
+    toast(
+      data.snapshot.armageddon
+        ? `Armageddon tie-break \u2014 you play ${colour}. White has 5:00, black 4:00; a draw means black wins.`
+        : `Game ${data.frameIndex} \u2014 you play ${colour}`
+    )
   })
   socket.on('game:update', (data: GameUpdatePayload) => applyGameUpdate(data))
   socket.on('turn:clock', (data: { turn?: ChessClockTiming }) => applyTurnTiming(data.turn ?? null))
